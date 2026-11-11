@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- On an unfolded iPhone Duo, taps, swipes and other touches now reach the inner display, and the agent reads where things are on it correctly. They used to do nothing there.
+
 ## 2026.1115.11 (2026-11-15)
 
 - When Pinky switches an iPhone to Pinky on the iPhone during a task, such as for a banking app that refuses screen sharing, the phone's page now says it is changing the connection and that the agent on your computer keeps doing the task. It used to read as if the task moved to the phone.
