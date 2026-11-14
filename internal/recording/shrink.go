@@ -3,7 +3,6 @@ package recording
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"time"
 
@@ -276,33 +275,4 @@ func fitSize(w, h, long int) (int, int) {
 		w, h = (w*long+m/2)/m, (h*long+m/2)/m
 	}
 	return max(2, w&^1), max(2, h&^1)
-}
-
-// shrinkTemp is the file Shrink writes next to a recording before it takes
-// the recording's place.
-func shrinkTemp(path string) string { return path + ".small" }
-
-// ShrinkInPlace shrinks the recording at path and puts the smaller one in
-// its place when it is smaller. It reports whether it did.
-func ShrinkInPlace(ctx context.Context, path string, o ShrinkOptions) (bool, error) {
-	tmp := shrinkTemp(path)
-	if err := Shrink(ctx, path, tmp, o); err != nil {
-		return false, err
-	}
-	small, err1 := os.Stat(tmp)
-	orig, err2 := os.Stat(path)
-	if err := errors.Join(err1, err2); err != nil {
-		os.Remove(tmp)
-		return false, err
-	}
-	if small.Size() >= orig.Size() {
-		os.Remove(tmp) // the phone's own stream was smaller already
-		return false, nil
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		// On Windows a replay that has the file open keeps it in place.
-		os.Remove(tmp)
-		return false, fmt.Errorf("recording: replace with the smaller file: %w", err)
-	}
-	return true, nil
 }

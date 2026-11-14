@@ -208,35 +208,6 @@ func TestShrinkKeepsTurnsAndSizeChanges(t *testing.T) {
 	}
 }
 
-func TestShrinkInPlace(t *testing.T) {
-	needShrink(t)
-	dir := t.TempDir()
-	src := write(t, dir, driver.HEVC, packets(t, "testsrc.hevc", driver.HEVC), 30)
-	before, _ := os.Stat(src)
-	// A bit rate far above the stream's: the result is larger, and the
-	// original stays.
-	ok, err := ShrinkInPlace(context.Background(), src, ShrinkOptions{LongSide: 1280, FPS: 30, BitRate: 50_000_000, KeyEvery: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	after, _ := os.Stat(src)
-	if ok || after.Size() != before.Size() {
-		t.Errorf("replaced by a larger file: %v, %d -> %d bytes", ok, before.Size(), after.Size())
-	}
-	if _, err := os.Stat(shrinkTemp(src)); !os.IsNotExist(err) {
-		t.Errorf("left the temporary file: %v", err)
-	}
-	// Smaller: the file in place is the H.264 one.
-	ok, err = ShrinkInPlace(context.Background(), src, ShrinkOptions{LongSide: 48, FPS: 5, BitRate: 50_000, KeyEvery: 100})
-	if err != nil {
-		t.Fatal(err)
-	}
-	info, err := Probe(src)
-	if !ok || err != nil || info.Codec != driver.H264 {
-		t.Errorf("not replaced: %v, %+v, %v", ok, info, err)
-	}
-}
-
 func TestShrinkCancelled(t *testing.T) {
 	needShrink(t)
 	dir := t.TempDir()
