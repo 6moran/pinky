@@ -2,7 +2,7 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## Unreleased
+## 2026.1115.11 (2026-11-15)
 
 - 任务中 Pinky 把 iPhone 改用「iPhone 上的 Pinky」连接时（比如打开不允许共享屏幕的银行 App），手机页面现在写明只是换了连接方式，任务仍由电脑上的智能体来做。以前的提示读起来像是任务交给了手机。
 
