@@ -2,6 +2,11 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Tapping Send in a chat no longer asks as a payment just because the chat shows prices. It counts as a commit, so your rules for commits still apply.
+- Sending a red packet (发红包, 塞钱进红包, 发送红包) now counts as a payment, so Pinky asks you first. Opening or claiming one you were sent asks nothing.
+
 ## 2026.1115.8 (2026-11-15)
 
 - Quitting Pinky now keeps it closed: agents (and anything that starts `pinkyctl mcp` or `pinkyctl task` again, such as an MCP manager reconnecting) no longer start it in the background until you open Pinky yourself. They're told you quit it and pick up where they were once you open it.
