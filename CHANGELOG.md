@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Agents can now hand Ask Pinky a task (phone_task_run, pinkyctl task run) when its model comes from DeepSeek or another service with a key of its own, or from a server on your computer; before, Pinky said it had no API key.
+
 ## 2026.1115.1 (2026-11-15)
 
 - An agent set to Only the apps I choose with no app listed can no longer use any app, as Settings › Agents says; before, it could use all of them. Settings no longer saves that choice without an app.
