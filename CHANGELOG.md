@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- On Linux desktops that bind shortcuts for apps (KDE on Wayland), Pinky now shows the keys Stop all really has next to it, and none when the shortcut has no keys. The desktop now calls the shortcut "Stop all" instead of "Ctrl+Alt+.".
+
 ## 2026.1115.9 (2026-11-15)
 
 - Tapping Send in a chat no longer asks as a payment just because the chat shows prices. It counts as a commit, so your rules for commits still apply.
