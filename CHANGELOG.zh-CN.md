@@ -2,7 +2,7 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## Unreleased
+## 2026.1115.8 (2026-11-15)
 
 - 退出 Pinky 后它会保持关闭：在你自己再打开 Pinky 之前，智能体（以及任何重新启动 `pinkyctl mcp` 或 `pinkyctl task` 的程序，比如重连时的 MCP 管理工具）不会再在后台把它启动起来。它们会收到 Pinky 已退出的提示，你打开 Pinky 后即可接着用。
 
