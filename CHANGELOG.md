@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1115.6 (2026-11-15)
 
 - On Android, the pill that shows while a task runs or your computer uses the phone now shrinks to a small dot at the edge of the screen after a few seconds, so it no longer covers the app. Tap the dot to see the pill again, and drag it wherever you like.
 
