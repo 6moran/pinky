@@ -14897,20 +14897,22 @@ func (msgs Messages) GwStatusSwitchCoreDevice() string {
 	return Catalog.Format(msgs.locale, "gwStatusSwitchCoreDevice", nil)
 }
 
-// GwStatusSwitchHelper says "Switching to Pinky on the iPhone"
+// GwStatusSwitchHelper says "Connecting through Pinky on the iPhone"
 // in the language the app shows.
 //
-// An iPhone's status line while Pinky moves an agent's task to Pinky on the
-// iPhone, for an app that refuses screen sharing. Shown only in other
-// languages.
+// An iPhone's status line while Pinky changes how it connects to it, to
+// Pinky on the iPhone (the WebDriverAgent helper), such as for an app that
+// refuses screen sharing. A change of connection, not the task moving to
+// the phone. Shown only in other languages.
 func GwStatusSwitchHelper() string { return In(i18n.Locale()).GwStatusSwitchHelper() }
 
-// GwStatusSwitchHelper says "Switching to Pinky on the iPhone"
+// GwStatusSwitchHelper says "Connecting through Pinky on the iPhone"
 // in the language of msgs.
 //
-// An iPhone's status line while Pinky moves an agent's task to Pinky on the
-// iPhone, for an app that refuses screen sharing. Shown only in other
-// languages.
+// An iPhone's status line while Pinky changes how it connects to it, to
+// Pinky on the iPhone (the WebDriverAgent helper), such as for an app that
+// refuses screen sharing. A change of connection, not the task moving to
+// the phone. Shown only in other languages.
 func (msgs Messages) GwStatusSwitchHelper() string {
 	return Catalog.Format(msgs.locale, "gwStatusSwitchHelper", nil)
 }
@@ -20373,24 +20375,46 @@ func (msgs Messages) PhoneSwitchCoreDeviceTitle(phone string) string {
 	return Catalog.Format(msgs.locale, "phoneSwitchCoreDeviceTitle", map[string]any{"phone": phone})
 }
 
-// PhoneSwitchHelperTitle says "Moving {phone} to Pinky on the iPhone…"
+// PhoneSwitchHelperTitle says "Connecting to {phone} through Pinky on the iPhone…"
 // in the language the app shows.
 //
-// The page of an iPhone while Pinky moves an agent's task to Pinky on the
-// iPhone, which shares no screen, for an app that refuses screen sharing.
-// phone is its name.
+// The page of an iPhone while Pinky changes how it connects to it, to Pinky
+// on the iPhone (the WebDriverAgent helper, which shares no screen), such
+// as for an app that refuses screen sharing. The agent on the computer
+// keeps doing the task: word it as a change of connection, not as the task
+// moving to the phone. phone is its name.
 func PhoneSwitchHelperTitle(phone string) string {
 	return In(i18n.Locale()).PhoneSwitchHelperTitle(phone)
 }
 
-// PhoneSwitchHelperTitle says "Moving {phone} to Pinky on the iPhone…"
+// PhoneSwitchHelperTitle says "Connecting to {phone} through Pinky on the iPhone…"
 // in the language of msgs.
 //
-// The page of an iPhone while Pinky moves an agent's task to Pinky on the
-// iPhone, which shares no screen, for an app that refuses screen sharing.
-// phone is its name.
+// The page of an iPhone while Pinky changes how it connects to it, to Pinky
+// on the iPhone (the WebDriverAgent helper, which shares no screen), such
+// as for an app that refuses screen sharing. The agent on the computer
+// keeps doing the task: word it as a change of connection, not as the task
+// moving to the phone. phone is its name.
 func (msgs Messages) PhoneSwitchHelperTitle(phone string) string {
 	return Catalog.Format(msgs.locale, "phoneSwitchHelperTitle", map[string]any{"phone": phone})
+}
+
+// PhoneSwitchHelperTask says "The agent on this computer keeps doing the task. Only how Pinky connects to the phone changes."
+// in the language the app shows.
+//
+// Under the title of an iPhone's page while Pinky changes its connection to
+// Pinky on the iPhone during an agent's task, so the person does not think
+// the task moved to the phone.
+func PhoneSwitchHelperTask() string { return In(i18n.Locale()).PhoneSwitchHelperTask() }
+
+// PhoneSwitchHelperTask says "The agent on this computer keeps doing the task. Only how Pinky connects to the phone changes."
+// in the language of msgs.
+//
+// Under the title of an iPhone's page while Pinky changes its connection to
+// Pinky on the iPhone during an agent's task, so the person does not think
+// the task moved to the phone.
+func (msgs Messages) PhoneSwitchHelperTask() string {
+	return Catalog.Format(msgs.locale, "phoneSwitchHelperTask", nil)
 }
 
 // PhoneTailnetAway says "Pinky can't reach {name} through Tailscale now. It connects again by itself once Tailscale says the phone is online."
