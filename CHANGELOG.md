@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1116.8 (2026-11-16)
 
 - Agents with read-only access can now type into search boxes that don't say they are one, such as Pinduoduo's.
 - When read-only stops an agent, the task card and the agent's message now say why: the agent's own access (change it in Settings › Agents), a read-only task it asked for, or Read-only mode (Settings › Safety).
