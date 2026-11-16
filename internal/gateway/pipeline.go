@@ -801,7 +801,8 @@ func (g *Gateway) prepare(ctx context.Context, l *lease, a Action, cur *screen.S
 	virtual := d.info.Virtual
 	g.mu.Unlock()
 	p.input = policy.Input{Device: d.id, App: fg, Screen: cur, TaskApps: apps, LongPress: a.LongPress,
-		ReadOnly: scope.Mode == ScopeReadOnly || readOnly, AllowBlocked: fgAllowed, Virtual: virtual}
+		ReadOnly: scope.Mode == ScopeReadOnly || readOnly, ReadOnlyAccess: scope.Mode == ScopeReadOnly,
+		AllowBlocked: fgAllowed, Virtual: virtual}
 	if scope.Mode == ScopeApps {
 		p.input.Scoped, p.input.ScopeApps = true, scope.Apps
 	}

@@ -10404,6 +10404,30 @@
   "@tasksReadOnly": {
     "description": "On a task card's line with the agent, the phone and the time, for a task the agent asked to run read-only."
   },
+  "tasksReadOnlyAgent": "{agent} has read-only access: it browses and searches, and types only into search fields. Change what it may do in Settings › Agents.",
+  "@tasksReadOnlyAgent": {
+    "description": "Under a running task's line with the agent and the phone, when the person gave the agent read-only access on its first-connection card (scopeReadOnly). Settings › Agents is where its Change button changes that; asking the person for approval does not.",
+    "placeholders": {
+      "agent": {
+        "type": "String",
+        "example": "Claude Code"
+      }
+    }
+  },
+  "tasksReadOnlyMode": "Read-only mode is on for every agent: they type only into search fields. Turn it off in Settings › Safety.",
+  "@tasksReadOnlyMode": {
+    "description": "Under a running task's line with the agent and the phone, while Read-only mode (settingsSafetyReadOnly) is on in Settings › Safety. It applies to every agent, whatever access each has."
+  },
+  "tasksReadOnlyTask": "{agent} asked to run this task read-only, so it types only into search fields. To do more, it starts a new task that is not read-only.",
+  "@tasksReadOnlyTask": {
+    "description": "Under a running task's line with the agent and the phone, when the agent itself asked to run the task read-only (phone_connect read_only) and its access is not read-only. Nothing in Settings changes this.",
+    "placeholders": {
+      "agent": {
+        "type": "String",
+        "example": "Claude Code"
+      }
+    }
+  },
   "tasksRowDone": "done",
   "@tasksRowDone": {
     "description": "The short state at the end of a one-line task row: the task is finished."

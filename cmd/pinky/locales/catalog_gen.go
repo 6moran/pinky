@@ -28675,6 +28675,62 @@ func (msgs Messages) TasksReadOnly() string {
 	return Catalog.Format(msgs.locale, "tasksReadOnly", nil)
 }
 
+// TasksReadOnlyAgent says "{agent} has read-only access: it browses and searches, and types only into search fields. Change what it may do in Se…"
+// in the language the app shows.
+//
+// Under a running task's line with the agent and the phone, when the person
+// gave the agent read-only access on its first-connection card
+// (scopeReadOnly). Settings › Agents is where its Change button changes
+// that; asking the person for approval does not.
+func TasksReadOnlyAgent(agent string) string { return In(i18n.Locale()).TasksReadOnlyAgent(agent) }
+
+// TasksReadOnlyAgent says "{agent} has read-only access: it browses and searches, and types only into search fields. Change what it may do in Se…"
+// in the language of msgs.
+//
+// Under a running task's line with the agent and the phone, when the person
+// gave the agent read-only access on its first-connection card
+// (scopeReadOnly). Settings › Agents is where its Change button changes
+// that; asking the person for approval does not.
+func (msgs Messages) TasksReadOnlyAgent(agent string) string {
+	return Catalog.Format(msgs.locale, "tasksReadOnlyAgent", map[string]any{"agent": agent})
+}
+
+// TasksReadOnlyMode says "Read-only mode is on for every agent: they type only into search fields. Turn it off in Settings › Safety."
+// in the language the app shows.
+//
+// Under a running task's line with the agent and the phone, while Read-only
+// mode (settingsSafetyReadOnly) is on in Settings › Safety. It applies to
+// every agent, whatever access each has.
+func TasksReadOnlyMode() string { return In(i18n.Locale()).TasksReadOnlyMode() }
+
+// TasksReadOnlyMode says "Read-only mode is on for every agent: they type only into search fields. Turn it off in Settings › Safety."
+// in the language of msgs.
+//
+// Under a running task's line with the agent and the phone, while Read-only
+// mode (settingsSafetyReadOnly) is on in Settings › Safety. It applies to
+// every agent, whatever access each has.
+func (msgs Messages) TasksReadOnlyMode() string {
+	return Catalog.Format(msgs.locale, "tasksReadOnlyMode", nil)
+}
+
+// TasksReadOnlyTask says "{agent} asked to run this task read-only, so it types only into search fields. To do more, it starts a new task that …"
+// in the language the app shows.
+//
+// Under a running task's line with the agent and the phone, when the agent
+// itself asked to run the task read-only (phone_connect read_only) and its
+// access is not read-only. Nothing in Settings changes this.
+func TasksReadOnlyTask(agent string) string { return In(i18n.Locale()).TasksReadOnlyTask(agent) }
+
+// TasksReadOnlyTask says "{agent} asked to run this task read-only, so it types only into search fields. To do more, it starts a new task that …"
+// in the language of msgs.
+//
+// Under a running task's line with the agent and the phone, when the agent
+// itself asked to run the task read-only (phone_connect read_only) and its
+// access is not read-only. Nothing in Settings changes this.
+func (msgs Messages) TasksReadOnlyTask(agent string) string {
+	return Catalog.Format(msgs.locale, "tasksReadOnlyTask", map[string]any{"agent": agent})
+}
+
 // TasksRowDone says "done"
 // in the language the app shows.
 //
