@@ -22,8 +22,14 @@ Other ways were weighed and left out:
 - **HTTPS**: `CONNECT host:443`. Pinky answers `200`, peeks at the first byte, and when it is a TLS handshake (`0x16`) it finishes the handshake itself with a leaf certificate for the host, signed by Pinky's CA, then reads the HTTP/1.1 requests inside, forwards each over a fresh TLS connection to the real host (verifying it against the system roots) and records it. ALPN offers only `http/1.1`.
 - **Not decrypted**: when the phone refuses Pinky's certificate (the app pins its certificate, or the phone does not trust Pinky's CA), the handshake fails. Pinky marks the host as pinned for 10 minutes; the next `CONNECT` to it becomes a raw tunnel, recorded as one "not decrypted" request with only its host and sizes. Anything after `CONNECT` that is not TLS is tunnelled raw too. The pinned set is a heuristic: one failed handshake for another reason (a phone going to sleep mid-handshake) makes a host pass through undecrypted for 10 minutes. Serving the certificate clears the set, so a person who just installed it does not wait.
 - **Blocked hosts, never decrypted**: a `CONNECT` to a host on the blocklist becomes a raw tunnel before any handshake, even for a phone that trusts Pinky's CA, and is recorded only as `https://host`, marked blocked, with no sizes, headers or bodies. Plain HTTP to such a host is passed on and recorded the same way. The blocklist is `traffic.BlockedHosts`, a built-in list of domains of banking, payment, brokerage, crypto-exchange and password-manager services in China and elsewhere (Alipay, WeChat Pay, UnionPay, the big Chinese banks, PayPal, Stripe, 1Password, Bitwarden, LastPass, …), plus the hosts the person adds for the phone under Never decrypt in its setup (`Gateway.SetTrafficBlocklist`, saved in `traffic_blocklist`). A host matches a domain when it is the domain or one of its subdomains. A domain an app uses that is not on the list is decrypted as usual: the list is a floor, and the person adds what it misses.
+- **The name is checked three times**: the `CONNECT` host, the TLS handshake's server name (SNI) and the `Host` of every decrypted request. An app can `CONNECT` to an IP address or a harmless name and name the bank only later:
+  - The SNI is read before any certificate is signed (`GetConfigForClient`). When it is blocked, Pinky signs nothing and sends nothing: the handshake bytes it read (kept up to 64 KB) are replayed into a raw tunnel to the target, so the app talks to the real server, and the request is recorded as the SNI's host only, blocked.
+  - An SNI that names another host than a `CONNECT` given as a name is refused (the connection closes, recorded as failed with a note); it does not mark the host as pinned. A `CONNECT` to an IP address may carry any SNI.
+  - A decrypted request whose `Host` is blocked: the name shows up only inside the decrypted stream, so that one request has been decrypted in memory. It is passed on, recorded as its host only (no URL, headers or bodies), the connection ends, and for 10 minutes every `CONNECT` to that address is tunnelled raw and recorded as the blocked host.
 - **The setup files**: a request to the proxy itself (`http://<proxy>/`) gets a short page; `/pinky-ca.crt` serves the CA as DER (`application/x-x509-ca-cert`, which both iOS Safari and Android's browser offer to install), `/pinky-ca.pem` as PEM, and `/proxy.pac` the proxy auto-config file (below).
-- **Only the phone**: every connection's remote address is checked against the phone Pinky expects (`Proxy.Client`). Any other address gets the connection closed before a byte is read, and is counted (`Rejected`).
+- **Only the phone**: every connection's remote address is checked against the phone Pinky expects (`Proxy.Client`). The setup files go to a phone whose switch is on; the proxy takes a phone only while its task runs (and on the computer's loopback, the phone routed over its cable). Any other address gets the connection closed before a byte is read, and is counted (`Rejected`); the refusal is logged at most once a minute.
+- **Nothing on this computer**: the proxy's own dial checks the address it actually connects to, after DNS (`net.Dialer.Control`), so a name that resolves there is caught too. It refuses loopback, unspecified (`0.0.0.0/8`, `::`), link-local (including `169.254.169.254`, the cloud metadata address), multicast and broadcast addresses, and every address of this computer's own interfaces (read again at most every 10 seconds); the phone gets `502`. Private LAN ranges (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`) stay allowed: the phone reaches them directly anyway, outside the proxy, and apps use them (a printer, a NAS, a TV), so refusing them would break apps and protect nothing.
+- **Limits**: request headers at most 1 MB (`431` past it); a connection whose reads stall for 2 minutes, headers or body, is closed (15 seconds for a TLS handshake); a server that does not start its answer in 2 minutes fails the request (`ResponseHeaderTimeout`, response headers at most 1 MB); at most 512 connections at once, past which new ones are closed and counted as refused.
 - **Only when asked**: what the proxy forwards is recorded only when `Proxy.Record` says so for that phone: while it has a task and the person does not hold it.
 
 ### The certificate authority
@@ -37,7 +43,8 @@ An earlier Pinky's `traffic-ca.key` moves into the keychain at the first start o
 
 - ECDSA P-256, valid 1 year, named "Pinky Traffic CA" with a short random suffix so that two installs are told apart on a phone. It can sign only leaf certificates (`MaxPathLen 0`).
 - **Renewal**: a CA within 30 days of its end (`traffic.RenewBefore`) is replaced, at start or while Pinky runs (each capture pass checks). The setup then says Pinky made a new certificate and the phone has to install it (steps 2 to 4) and remove the old one; it shows the end date the rest of the time. The warning lasts until Pinky restarts. A phone that keeps only the old certificate sees HTTPS as not decrypted until it installs the new one.
-- Leaf certificates are made on the fly per host (ECDSA P-256, valid 1 year but never past the CA, the host as DNS name or IP SAN) and kept in memory, at most 1,024.
+- The CA is marked for server authentication only (`ExtKeyUsage: ServerAuth`), so it cannot sign client or code-signing certificates the phone would honour.
+- Leaf certificates are made on the fly per host (ECDSA P-256, valid 24 hours but never past the CA, the host as DNS name or IP SAN) and kept in memory, at most 1,024; one within an hour of its end is made again.
 - Settings › Phones shows the CA's name, SHA-256 fingerprint and end date, so that the person can compare it with what the phone shows, and the steps to remove it from the phone: on an iPhone, Settings › General › VPN & Device Management › Pinky's profile › Remove Profile; on Android, Settings › Security & privacy › More security settings › Encryption & credentials › User credentials › Pinky's certificate › Remove.
 
 Removing the certificate file (or the keychain item) makes a new CA at the next start; the phones then have to install the new one.
@@ -50,7 +57,7 @@ Pinky listens only on the address the phone reaches, at two ports there:
 - **The proxy port, 9277**, only while an agent's task runs on the phone. Outside tasks nothing listens there.
 
 - **The phone's addresses**, from what Pinky already knows (`driver.NetAddresser`): on Android, `ip -o addr show` over adb; on an iPhone, the network addresses usbmuxd lists for a phone paired over the network. Read again at most every 30 seconds.
-- **The listening address**: the computer's own address on the network the phone is on (the interface whose subnet contains the phone's address), or the computer's tailnet address when the phone's is a Tailscale one (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`). Never `0.0.0.0`; link-local addresses are skipped. With no match, nothing listens and the setup says "Pinky doesn't know an address of the phone on a network this computer is on".
+- **The listening address**: the computer's own address on the network the phone is on (the interface whose subnet contains the phone's address), or the computer's tailnet address when the phone's is a Tailscale one (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`). Carriers use `100.64.0.0/10` too (CGNAT), so an address there counts as the tailnet's only when Tailscale on this computer lists it as a peer (`Options.TrafficTailnet`, read only when the computer has a Tailscale address). Never `0.0.0.0`; link-local addresses are skipped. With no match, nothing listens and the setup says "Pinky doesn't know an address of the phone on a network this computer is on".
 
 ### The PAC file
 
@@ -91,7 +98,11 @@ A switch in the phone's setup, "Route over the cable during tasks", off by defau
 
 `adb reverse` alone routes nothing: the phone's proxy setting is what sends apps' traffic to it. Requests then arrive from `127.0.0.1`, which the proxy accepts only while a route exists, as that phone.
 
+Pinky's own setting (`127.0.0.1:<port>`, `localhost` or `::1`) is never saved as the one to put back: when the phone still points at Pinky (an earlier route was never undone), the value noted for that earlier route is kept, and with none, no proxy.
+
 The setting goes back when the task ends, when the switch goes off, when the phone is removed, when Pinky stops, and at Pinky's next start (a crash), in each case only if the phone's setting is still `127.0.0.1:<port>`: a person who changed it meanwhile keeps their change. An empty previous value is restored as `:0`, which Android reads as no proxy. A restore that fails (the phone is unplugged) stays in the database and is tried again every pass until it works. Only one Android phone is routed at a time, since the port on the computer's loopback is shared; a second waits ("Another phone is routed over its cable").
+
+While the phone is routed, its web goes through the cable. When the cable comes out or Pinky crashes or quits mid-task, the phone keeps `127.0.0.1:9277`, which then reaches nothing: it has no web until it is plugged into a running Pinky again, which puts the setting back. The switch's description says so, with the way to clear it from any computer with adb: `adb shell settings put global http_proxy :0`.
 
 ### iPhone without a Wi-Fi proxy (design only)
 
@@ -104,7 +115,8 @@ An iPhone over USB has no `adb reverse`, and a Wi-Fi proxy only covers that Wi-F
 - at most 2,000 requests and 32 MB across all phones; past either, the oldest go first, and the tool says how many of the task's requests were dropped;
 - each body cut at 16 KB as it streams (the request and response still go through whole);
 - gzip and deflate bodies decoded when read;
-- dropped for a phone when its task ends, when its switch goes off, and when it is removed. Nothing is written to disk; history keeps only the step line ("Read 12 network requests of Pixel 9").
+- dropped for a phone when its task ends, when its switch goes off, and when it is removed. Each drop starts a new generation for the phone, and a request that finishes after it (it started in the ended task) is not kept;
+- nothing is written to disk; history keeps only the step line ("Read 12 network requests of Pixel 9").
 
 ## Matching traffic to the task
 
@@ -147,10 +159,11 @@ Traffic is among the most sensitive things on a phone: tokens, cookies, messages
 - **Pinky changes no phone setting by itself.** The person sets the Wi-Fi proxy and installs the CA, and the setup tells them how to remove it. The Android cable route changes `http_proxy` only behind the person's switch, saves the old value first, and puts it back at the task's end and at every start.
 - **Redaction**, applied to every URL, header and body before it reaches the agent:
   - headers: `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, and every header whose name looks like a secret (token, secret, password, session, signature, api key, auth, csrf, otp, …);
-  - URLs: the user-info password and query parameters with such names;
-  - JSON and form bodies: values of such keys, at any depth;
+  - URLs: the user-info password and query parameters with such names, also in any header whose value is an absolute URL (`Location`, `Referer`, …);
+  - JSON and form bodies: values of such keys, at any depth; an object or a list under such a key is replaced whole. Any body starting with `{` or `[` is tried as JSON whatever its type. JSON that does not parse (a body cut at 16 KB) is redacted by a text scan that replaces the value after each such key, up to its end or the end of the text;
   - anywhere: `Bearer …`, `Basic …` and `token …` credentials and JWTs;
   - binary bodies are left out, not shown.
+  The `path` filter matches the redacted path and query, so an agent cannot guess a redacted value a letter at a time. Bodies are stored cut and redacted when read, not redacted before they are cut; the text scan covers the cut end.
   Redaction works by name and shape. A secret under an innocent name (`{"data": "<card number>"}`) is not caught.
 - **Untrusted.** The tool description and the result say that request contents are data, not instructions, as with screen text.
 - **The task log shows it.** Each read is a step: "Read 12 network requests of Pixel 9", "Read network request 104 of Pixel 9". History keeps the line, never the requests.
