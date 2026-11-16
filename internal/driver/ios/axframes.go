@@ -17,8 +17,11 @@ import (
 //   - SpringBoard's frame is the outer display's (466x678), and its icons are
 //     in the inner display's own frame, not turned: Files at y 816 of 951.
 //
-// raxScale and turnRaxFrames read both cases from the frames themselves, so
-// a one-screen iPhone, whose frames are the right way up, is unchanged.
+// raxScale and turnRaxFrames read both cases from the frames themselves, and
+// only on a second display (displayId 2 or more, as touchSurface): every
+// other screen keeps the scale from the app's width and its frames as they
+// come, so that a one-screen phone whose elements happen to fit the turned
+// frame (a scrolled list in a split view, in landscape) is not misread.
 
 // near reports whether a is within 3% of b.
 func near(a, b float64) bool { return b != 0 && math.Abs(a-b)/math.Abs(b) < 0.03 }
@@ -26,6 +29,12 @@ func near(a, b float64) bool { return b != 0 && math.Abs(a-b)/math.Abs(b) < 0.03
 // raxScale returns the pixels per point of a walk's frames on the screen si
 // describes the right way up.
 func raxScale(app raxElement, si screenInfo) float64 {
+	if si.DisplayID < 2 {
+		if app.HasFrame && app.Frame.W > 0 {
+			return float64(si.Width) / app.Frame.W
+		}
+		return si.Scale
+	}
 	points := si.Scale
 	w, h := float64(si.Width), float64(si.Height)
 	if !app.HasFrame || app.Frame.W <= 0 || app.Frame.H <= 0 || w <= 0 || h <= 0 {
@@ -50,11 +59,11 @@ func raxScale(app raxElement, si screenInfo) float64 {
 // turnRaxFrames returns the elements with their frames turned into the
 // interface's, when they are in the display's own frame instead: the
 // elements reach past the interface's bottom edge yet fit the display's
-// frame, which the interface is a quarter turn from. Otherwise it returns
-// els as they are.
+// frame, which the interface is a quarter turn from. Otherwise, and on any
+// display but a second one, it returns els as they are.
 func turnRaxFrames(els []raxElement, si screenInfo, scale float64) []raxElement {
 	q := si.turn()
-	if !q.swaps() || scale <= 0 || len(els) < 2 {
+	if si.DisplayID < 2 || !q.swaps() || scale <= 0 || len(els) < 2 {
 		return els
 	}
 	w, h := float64(si.Width)/scale, float64(si.Height)/scale // the interface, in points
