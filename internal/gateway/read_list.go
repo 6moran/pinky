@@ -269,6 +269,20 @@ func (g *Gateway) readList(ctx context.Context, l *lease, req ReadListRequest) *
 			view.Stop, view.Truncated = "list_changed", true
 			break
 		}
+		// The pipeline read the screen after the swipe with the OCR it adds
+		// where the tree misses text, which on an iPhone is any text OCR
+		// finds and no element shows. The read's own reads take OCR only
+		// where the list's tree says too little: the same here, so every
+		// screen of the read is read alike (GitHub issue #148).
+		retry := ocrOff
+		switch req.OCR {
+		case "all":
+			retry = ocrAll
+		case "auto":
+			if next, ok = autoOCR(next, nextList); ok {
+				retry = ocrAuto
+			}
+		}
 		settled := r.Settle != "timeout"
 		raw := collectListViewport(next, nextList)
 		for try := 0; !settled && try < 2; try++ {
@@ -278,7 +292,7 @@ func (g *Gateway) readList(ctx context.Context, l *lease, req ReadListRequest) *
 			if !sleepCtx(ctx, g.opt.PollInterval, nil) {
 				break
 			}
-			again, res := g.readListScreen(ctx, l, req.OCR)
+			again, res := g.readListScreenOCR(ctx, l, retry)
 			if res != nil {
 				view.Stop = readListStop(res)
 				return withScan(res, view)
@@ -405,6 +419,26 @@ func (g *Gateway) listScreenAfter(ctx context.Context, l *lease, ocr string, nex
 	return next, nil
 }
 
+// autoOCR is s as ocr "auto" reads it for list: without OCR's lines when
+// the tree says enough about the list (viewportNeedsOCR), as the read's
+// first screen is read. It reports whether the OCR lines stay.
+func autoOCR(s *screen.Screen, list screen.Element) (*screen.Screen, bool) {
+	tree := *s
+	tree.Elements = make([]screen.Element, 0, len(s.Elements))
+	for _, e := range s.Elements {
+		if e.Source != screen.SourceOCR {
+			tree.Elements = append(tree.Elements, e)
+		}
+	}
+	if len(tree.Elements) == len(s.Elements) {
+		return s, false
+	}
+	if viewportNeedsOCR(&tree, list) {
+		return s, true
+	}
+	return &tree, false
+}
+
 // listLane picks where across the list the next swipe runs: the first lane
 // whose start the rules let through on the latest screen. The pipeline
 // judges the swipe again on its own read, with OCR, before it is sent;
@@ -451,13 +485,17 @@ func (st *readState) take(s *screen.Screen, first bool) bool {
 		// Adjacent screens must share text: without it, or with lines
 		// above the shared part that the last screen did not have, the
 		// swipe may have skipped content.
-		gap := len(st.previous) > 0 && len(current) > 0 &&
-			(overlap == 0 || (req.Direction != "down" && unseenPrefix(st.previous, current)))
+		var unseen []viewportLine
+		if len(st.previous) > 0 && len(current) > 0 && overlap > 0 && req.Direction != "down" {
+			unseen = unseenAbove(st.previous, current, gapContext{area: st.list.Bounds, seen: st.outside()})
+		}
+		gap := len(st.previous) > 0 && len(current) > 0 && (overlap == 0 || len(unseen) > 0)
 		switch {
 		case gap && overlap > 0 && req.Direction != "down" && endMarker(current):
 			fresh = newViewportContent(st.previous, current)
 		case gap:
 			view.Stop, view.Truncated = "gap", true
+			view.gap = gapNote(view.StartScreen+view.Pages+1, overlap, unseen)
 			return false
 		}
 	}
@@ -481,6 +519,43 @@ func (st *readState) take(s *screen.Screen, first bool) bool {
 	view.Overlap += overlap
 	st.previous, st.raw, st.full = tail(current, readListKeep), tail(raw, readListKeep), full
 	return true
+}
+
+// outside returns the last screen's lines outside the list, and its fixed
+// controls: what a gap judgment may count as seen though the list did not
+// show it (gapContext.seen).
+func (st *readState) outside() []viewportLine {
+	out := append([]viewportLine(nil), st.pinned...)
+	area := st.list.Bounds
+	for _, line := range st.full {
+		if area.Empty() || !area.Contains(line.Bounds.Center()) {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// gapNote says why screen page did not follow on from the one before, for
+// the result's message: a read stopped at a gap is otherwise hard to tell
+// from a list whose screens share nothing.
+func gapNote(page, overlap int, unseen []viewportLine) string {
+	if overlap == 0 || len(unseen) == 0 {
+		return fmt.Sprintf("Screen %d shared no run of lines with the one before, so the swipe may have skipped content.", page)
+	}
+	quoted := make([]string, 0, 3)
+	for _, line := range unseen[:min(len(unseen), 3)] {
+		text, _ := truncateRunesMarked(line.Text, 40)
+		quoted = append(quoted, fmt.Sprintf("%q", text))
+	}
+	if len(unseen) > 3 {
+		quoted = append(quoted, "…")
+	}
+	verb := "were"
+	if len(unseen) == 1 {
+		verb = "was"
+	}
+	return fmt.Sprintf("Screen %d shared %d line%s with the one before, but %d line%s above them (%s) %s not on it, so content may have been added or skipped there.",
+		page, overlap, plural(overlap), len(unseen), plural(len(unseen)), strings.Join(quoted, ", "), verb)
 }
 
 // endsHere reports whether the list's last row, at the end being read
@@ -779,6 +854,9 @@ func readListResult(l *lease, view *ScanView) *Result {
 	res.Message = fmt.Sprintf("%s the list: %d screen%s, %d new line%s, %d overlapping line%s; stopped at %s.",
 		state, view.Pages, plural(view.Pages), view.Lines, plural(view.Lines),
 		view.Overlap, plural(view.Overlap), strings.ReplaceAll(view.Stop, "_", " "))
+	if view.gap != "" {
+		res.Message += " " + view.gap
+	}
 	if view.Continuation != "" {
 		res.Message += " Pass continuation to read on from here."
 	}
