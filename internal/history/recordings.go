@@ -26,21 +26,66 @@ type Recording struct {
 // ErrNoRecording means the task has no recording, or its file is gone.
 var ErrNoRecording = errors.New("no recording")
 
+// ErrRecordingsDirInside means the folder chosen for recordings is Pinky's
+// own recordings folder or one in it, which deleting all activity removes
+// whole.
+var ErrRecordingsDirInside = errors.New("the recordings folder is in Pinky's own recordings folder")
+
+// CheckRecordingsDir reports why dir cannot be the folder new recordings go
+// to, and nil when it can; "" is the history folder's own and always can.
+// Symbolic links count: a path that leads into Pinky's own recordings
+// folder is refused like the folder itself (ErrRecordingsDirInside).
+func (s *Store) CheckRecordingsDir(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	if !filepath.IsAbs(dir) {
+		return errors.New("the recordings folder is not an absolute path")
+	}
+	dir = filepath.Clean(dir)
+	if within(s.recDir, dir) || within(resolvePath(s.recDir), resolvePath(dir)) {
+		return ErrRecordingsDirInside
+	}
+	return nil
+}
+
+// within reports whether path is dir or in it; both are clean and
+// absolute.
+func within(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolvePath returns path with its symbolic links followed. For a path
+// that is not there yet, it follows those of the nearest folder above it
+// that is, and keeps the rest as it is.
+func resolvePath(path string) string {
+	rest := ""
+	for p := path; ; {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, rest)
+		}
+		up := filepath.Dir(p)
+		if up == p {
+			return path
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = up
+	}
+}
+
 // SetRecordingsDir sets the folder new recordings go to, an absolute path;
 // "" is the history folder's own. Recordings made before stay where they
 // are, and the store keeps finding them there: each row keeps its file's
 // place. While dir is not a folder (a disk that is not plugged in), new
-// recordings go to the history folder.
+// recordings go to the history folder. It refuses what CheckRecordingsDir
+// refuses.
 func (s *Store) SetRecordingsDir(dir string) error {
+	if err := s.CheckRecordingsDir(dir); err != nil {
+		return err
+	}
 	if dir != "" {
-		if !filepath.IsAbs(dir) {
-			return errors.New("the recordings folder is not an absolute path")
-		}
 		dir = filepath.Clean(dir)
-		// Deleting all history removes Pinky's own recordings folder whole.
-		if rel, err := filepath.Rel(s.recDir, dir); err == nil && !strings.HasPrefix(rel, "..") {
-			return errors.New("the recordings folder is in Pinky's own recordings folder")
-		}
 	}
 	s.userRecDir.Store(&dir)
 	return nil

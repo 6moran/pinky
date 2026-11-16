@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -269,5 +270,40 @@ func TestRecordingsDirNotInPinkysRecordings(t *testing.T) {
 	s := openStore(t)
 	if err := s.SetRecordingsDir(filepath.Join(s.Dir(), "recordings", "mine")); err == nil {
 		t.Error("a folder in Pinky's own recordings folder was taken")
+	}
+}
+
+func TestCheckRecordingsDirFollowsLinks(t *testing.T) {
+	s := openStore(t)
+	own := filepath.Join(s.Dir(), "recordings")
+	if err := os.MkdirAll(own, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(own)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(own, link); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	for _, dir := range []string{
+		own,
+		filepath.Join(own, "sub"),
+		link,                               // a link to it
+		filepath.Join(link, "not", "yet"),  // a folder not made yet, through the link
+		filepath.Join(resolved, "2026-11"), // by its resolved path (/private/var for /var on macOS)
+	} {
+		if err := s.CheckRecordingsDir(dir); !errors.Is(err, ErrRecordingsDirInside) {
+			t.Errorf("CheckRecordingsDir(%s) = %v, want ErrRecordingsDirInside", dir, err)
+		}
+		if err := s.SetRecordingsDir(dir); err == nil {
+			t.Errorf("SetRecordingsDir(%s) took it", dir)
+		}
+	}
+	for _, dir := range []string{"", s.Dir(), own + "-mine", filepath.Join(t.TempDir(), "elsewhere")} {
+		if err := s.CheckRecordingsDir(dir); err != nil {
+			t.Errorf("CheckRecordingsDir(%s) = %v", dir, err)
+		}
 	}
 }
