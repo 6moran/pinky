@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1117.1 (2026-11-17)
 
 - You can now choose where task recordings are saved, in Settings › Privacy › Recordings folder, for example on an external disk. New recordings go there; earlier ones stay where they are and still play. Use Pinky's folder switches back.
 - While the chosen folder is missing (a disk that isn't plugged in) or can't be written, recordings go to Pinky's own folder, and Settings says when the folder is missing. Pinky won't take a folder inside its own recordings folder, even through a link, and says why.
