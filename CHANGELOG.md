@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1116.7 (2026-11-16)
 
 - Reading a long list on an iPhone, such as the Settings home page, no longer stops after the first screen as if the screens did not follow on. When a read does stop there, the agent is told which lines made it stop.
 
