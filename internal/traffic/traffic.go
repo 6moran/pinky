@@ -35,8 +35,11 @@ type Request struct {
 	URL       string
 	Host      string
 	Decrypted bool
-	Status    int // the response's status code; 0 without a response
-	Headers   []Header
+	// Blocked: a host Pinky never decrypts or records beyond its host
+	// (Blocked); such a request has only its host, start and end.
+	Blocked bool
+	Status  int // the response's status code; 0 without a response
+	Headers []Header
 	// ResponseHeaders are the response's headers.
 	ResponseHeaders []Header
 	Sent, Received  int64 // body bytes, or a tunnel's bytes each way

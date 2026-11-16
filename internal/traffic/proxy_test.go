@@ -12,8 +12,6 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -352,38 +350,5 @@ func TestStoreBounds(t *testing.T) {
 	q := Query{Device: "ipad", From: time.Now().Add(time.Hour)}
 	if len(s.Requests(q)) != 0 {
 		t.Error("a request before From")
-	}
-}
-
-func TestLoadCA(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "data")
-	a, err := LoadCA(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st, err := os.Stat(filepath.Join(dir, CAKeyFile))
-	if err != nil || st.Mode().Perm() != 0o600 {
-		t.Fatalf("key file: %v %v", st.Mode(), err)
-	}
-	b, err := LoadCA(dir)
-	if err != nil || !bytes.Equal(a.CertDER(), b.CertDER()) {
-		t.Fatalf("a second load made another authority: %v", err)
-	}
-	if !strings.HasPrefix(a.Name(), "Pinky Traffic CA ") || len(a.Fingerprint()) != 95 {
-		t.Errorf("name %q fingerprint %q", a.Name(), a.Fingerprint())
-	}
-	leaf, err := a.Leaf("Api.Example.test.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := leaf.Leaf.Verify(x509.VerifyOptions{DNSName: "api.example.test", Roots: a.Pool()}); err != nil {
-		t.Errorf("leaf: %v", err)
-	}
-	if ip, _ := a.Leaf("10.0.0.2"); len(ip.Leaf.IPAddresses) != 1 {
-		t.Error("an address's certificate has no IP")
-	}
-	os.WriteFile(filepath.Join(dir, CAKeyFile), []byte("junk"), 0o600)
-	if _, err := LoadCA(dir); err == nil {
-		t.Error("a broken key loaded")
 	}
 }

@@ -32,7 +32,12 @@ import (
 // handshake), and passes no WebSocket connections yet.
 //
 // It takes connections only from the addresses Client accepts, and serves
-// the CA's certificate to them at CertPath, for the person to install.
+// the CA's certificate to them at CertPath, for the person to install, and
+// a proxy auto-config file at PACPath. ListenSetup listens for those two
+// files only, never proxying.
+//
+// Hosts Blocked names are never decrypted: their connections pass through
+// as tunnels kept only as their host, marked blocked.
 type Proxy struct {
 	CA    *CA
 	Store *Store
@@ -48,13 +53,19 @@ type Proxy struct {
 	Transport http.RoundTripper
 	// Dial connects the tunnels; nil dials directly.
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
-	Log  *slog.Logger
+	// Blocked says whether a phone's host is one Pinky never decrypts or
+	// records beyond its host; nil blocks only BlockedHosts.
+	Blocked func(device, host string) bool
+	Log     *slog.Logger
 
 	once sync.Once
 	tr   http.RoundTripper
 
 	mu        sync.Mutex
 	listeners map[string]net.Listener
+	// setupOnly: the listeners that serve only the setup files, to the
+	// proxy address their PAC file names.
+	setupOnly map[string]string
 	conns     map[net.Conn]string // open connections, by the listener's address
 	pinned    map[string]time.Time
 	rejected  int
@@ -65,6 +76,9 @@ type Proxy struct {
 const (
 	CertPath = "/pinky-ca.crt"
 	pemPath  = "/pinky-ca.pem"
+	// PACPath is the proxy auto-config file: the proxy, or a direct
+	// connection when the proxy does not answer.
+	PACPath = "/proxy.pac"
 )
 
 // Timeouts.
@@ -79,7 +93,15 @@ const (
 // Listen starts taking connections at addr ("192.168.1.5:9277", or
 // "127.0.0.1:0" for any free port) and returns the address it listens at.
 // Listening there already is not an error.
-func (p *Proxy) Listen(addr string) (string, error) {
+func (p *Proxy) Listen(addr string) (string, error) { return p.listen(addr, "") }
+
+// ListenSetup starts serving only the setup files at addr: the CA's
+// certificate and a PAC file that names proxy ("192.168.1.5:9277"). It
+// proxies nothing and keeps nothing; it takes only the addresses Client
+// accepts.
+func (p *Proxy) ListenSetup(addr, proxy string) (string, error) { return p.listen(addr, proxy) }
+
+func (p *Proxy) listen(addr, setupFor string) (string, error) {
 	p.mu.Lock()
 	if _, ok := p.listeners[addr]; ok {
 		p.mu.Unlock()
@@ -94,9 +116,13 @@ func (p *Proxy) Listen(addr string) (string, error) {
 	p.mu.Lock()
 	if p.listeners == nil {
 		p.listeners = map[string]net.Listener{}
+		p.setupOnly = map[string]string{}
 		p.conns = map[net.Conn]string{}
 	}
 	p.listeners[at] = ln
+	if setupFor != "" {
+		p.setupOnly[at] = setupFor
+	}
 	p.mu.Unlock()
 	go p.accept(ln, at)
 	return at, nil
@@ -107,6 +133,7 @@ func (p *Proxy) Stop(addr string) {
 	p.mu.Lock()
 	ln := p.listeners[addr]
 	delete(p.listeners, addr)
+	delete(p.setupOnly, addr)
 	var open []net.Conn
 	for c, at := range p.conns {
 		if at == addr {
@@ -176,7 +203,7 @@ func (p *Proxy) accept(ln net.Listener, at string) {
 				p.mu.Unlock()
 				c.Close()
 			}()
-			p.serve(c)
+			p.serve(c, at)
 		}()
 	}
 }
@@ -203,7 +230,14 @@ func remoteAddr(c net.Conn) netip.Addr {
 	return netip.Addr{}
 }
 
-func (p *Proxy) serve(c net.Conn) {
+func (p *Proxy) serve(c net.Conn, at string) {
+	p.mu.Lock()
+	setupFor, setupOnly := p.setupOnly[at]
+	p.mu.Unlock()
+	pac := at
+	if setupOnly {
+		pac = setupFor
+	}
 	cx, ok := p.take(remoteAddr(c))
 	if !ok {
 		p.mu.Lock()
@@ -224,11 +258,15 @@ func (p *Proxy) serve(c net.Conn) {
 			return
 		}
 		switch {
+		case setupOnly && (req.Method == http.MethodConnect || (req.URL.IsAbs() && !p.isSelf(hostPort(req.URL.Host, "80")))):
+			// Outside a task this address hands out the setup files only.
+			writeError(c, http.StatusForbidden, "Pinky's proxy runs only during an agent's task; this address serves only Pinky's setup files.")
+			return
 		case req.Method == http.MethodConnect:
 			p.connect(c, br, req, cx)
 			return
 		case !req.URL.IsAbs() || p.isSelf(req.URL.Host):
-			if !p.page(c, req) {
+			if !p.page(c, req, pac) {
 				return
 			}
 		default:
@@ -236,7 +274,7 @@ func (p *Proxy) serve(c net.Conn) {
 				req.URL.Host = req.Host
 			}
 			if p.isSelf(hostPort(req.URL.Host, "80")) {
-				if !p.page(c, req) {
+				if !p.page(c, req, pac) {
 					return
 				}
 				continue
@@ -280,9 +318,10 @@ func (p *Proxy) isSelf(hp string) bool {
 	return false
 }
 
-// page answers a request to the proxy itself: the CA's certificate, or a
-// page that links to it. It returns whether the connection goes on.
-func (p *Proxy) page(w io.Writer, req *http.Request) bool {
+// page answers a request to the proxy itself: the CA's certificate, the
+// PAC file naming the proxy at pac, or a page that links to the
+// certificate. It returns whether the connection goes on.
+func (p *Proxy) page(w io.Writer, req *http.Request, pac string) bool {
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, io.LimitReader(req.Body, 1<<16))
 	}
@@ -297,6 +336,8 @@ func (p *Proxy) page(w io.Writer, req *http.Request) bool {
 		p.mu.Lock()
 		p.pinned = nil
 		p.mu.Unlock()
+	case PACPath:
+		ctype, body = "application/x-ns-proxy-autoconfig", []byte(PAC(pac))
 	case pemPath:
 		ctype, body = "application/x-pem-file", p.CA.CertPEM()
 		header.Set("Content-Disposition", `attachment; filename="pinky-ca.pem"`)
@@ -313,6 +354,20 @@ func (p *Proxy) page(w io.Writer, req *http.Request) bool {
 		resp.Body = http.NoBody
 	}
 	return resp.Write(w) == nil && !req.Close
+}
+
+// PAC returns a proxy auto-config file that sends the phone's web
+// requests to proxy, and connects directly when the proxy does not answer
+// (outside an agent's task, or with Pinky not running). Names without a
+// dot and .local ones always go directly.
+func PAC(proxy string) string {
+	return `function FindProxyForURL(url, host) {
+  if (isPlainHostName(host) || dnsDomainIs(host, ".local")) {
+    return "DIRECT";
+  }
+  return "PROXY ` + proxy + `; DIRECT";
+}
+`
 }
 
 const caPage = `<!doctype html>
@@ -340,6 +395,13 @@ func (p *Proxy) forward(w io.Writer, req *http.Request, cx conn, target string, 
 	host := req.URL.Hostname()
 	if decrypted && req.Host != "" {
 		host = hostOnly(req.Host)
+	}
+	if !decrypted && p.blocked(cx.device, host) {
+		// Passed on, kept only as its host.
+		if keep {
+			defer p.keep(true, blockedRequest(cx, start, "http://"+host, host), Bodies{})
+		}
+		keep = false
 	}
 	r := Request{Device: cx.device, Client: cx.client, Start: start, Method: req.Method, Host: host, Decrypted: true}
 	r.URL = displayURL(req, decrypted)
@@ -396,6 +458,23 @@ func (p *Proxy) forward(w io.Writer, req *http.Request, cx conn, target string, 
 		Response: respBody.bytes(), ResponseCut: respBody.cut(), ResponseType: resp.Header.Get("Content-Type"), ResponseEncoding: resp.Header.Get("Content-Encoding"),
 	})
 	return werr == nil && !clientClose
+}
+
+// blocked reports whether Pinky never decrypts or records a phone's host.
+func (p *Proxy) blocked(device, host string) bool {
+	if p.Blocked != nil {
+		return p.Blocked(device, host)
+	}
+	return Blocked(host, nil)
+}
+
+// BlockedNote is the note of a blocked host's request.
+const BlockedNote = "blocked: Pinky never decrypts or records this host"
+
+// blockedRequest is all Pinky keeps of a request to a blocked host.
+func blockedRequest(cx conn, start time.Time, url, host string) Request {
+	return Request{Device: cx.device, Client: cx.client, Start: start, End: time.Now(), Method: http.MethodConnect,
+		URL: url, Host: host, Blocked: true, Note: BlockedNote}
 }
 
 func (p *Proxy) keep(keep bool, r Request, b Bodies) {
@@ -573,6 +652,11 @@ func (p *Proxy) connect(c net.Conn, br *bufio.Reader, req *http.Request, cx conn
 	}
 	start := time.Now()
 	keep := p.Record == nil || p.Record(cx.device)
+	if p.blocked(cx.device, host) {
+		p.tunnel(c, br, target, host, cx, start, false, "")
+		p.keep(keep, blockedRequest(cx, start, "https://"+host, host), Bodies{})
+		return
+	}
 	if p.isPinned(host) {
 		p.tunnel(c, br, target, host, cx, start, keep, "passed through: this host refused Pinky's certificate earlier")
 		return

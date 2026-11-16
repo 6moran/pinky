@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -19,20 +20,32 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/DIYgod/pinky/internal/secret"
 )
 
 // The certificate authority's files, in the folder LoadCA keeps them in
-// (Pinky's data folder). The key is readable by the person's user only.
+// (Pinky's data folder). The key file is there only where Pinky keeps the
+// key in no keychain (Linux, Windows), readable by the person's user only.
 const (
 	CACertFile = "traffic-ca.crt"
 	CAKeyFile  = "traffic-ca.key"
 )
 
-// How long certificates last. iOS refuses server certificates valid for
-// more than 825 days; a year stays well inside every platform's limit.
+// Where a CA's private key is kept (CA.KeyPlace).
 const (
-	caLife   = 5 * 365 * 24 * time.Hour
-	leafLife = 365 * 24 * time.Hour
+	KeyInKeychain = "keychain"
+	KeyInFile     = "file"
+	KeyInMemory   = "memory"
+)
+
+// How long certificates last. A CA lasts a year and is replaced
+// RenewBefore its end; leaves last a year at most, never past their CA.
+// iOS refuses server certificates valid for more than 825 days.
+const (
+	caLife      = 365 * 24 * time.Hour
+	RenewBefore = 30 * 24 * time.Hour
+	leafLife    = 365 * 24 * time.Hour
 	// leafKeep bounds the certificates kept for hosts; the cache starts
 	// over past it.
 	leafKeep = 1024
@@ -45,6 +58,12 @@ type CA struct {
 	cert *x509.Certificate
 	key  crypto.Signer
 	der  []byte
+	// Renewed: LoadCA made this one because the one before was about to
+	// end; the phones have to install it again.
+	Renewed bool
+	// KeyPlace is where its private key is kept: KeyInKeychain,
+	// KeyInFile or KeyInMemory.
+	KeyPlace string
 
 	mu      sync.Mutex
 	leafKey *ecdsa.PrivateKey
@@ -52,7 +71,9 @@ type CA struct {
 }
 
 // NewCA makes a new certificate authority, in memory.
-func NewCA() (*CA, error) {
+func NewCA() (*CA, error) { return newCAFor(caLife) }
+
+func newCAFor(life time.Duration) (*CA, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -69,7 +90,7 @@ func NewCA() (*CA, error) {
 		SerialNumber:          serial,
 		Subject:               pkix.Name{CommonName: "Pinky Traffic CA " + tag, Organization: []string{"Pinky"}},
 		NotBefore:             now.Add(-time.Hour),
-		NotAfter:              now.Add(caLife),
+		NotAfter:              now.Add(life),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -94,33 +115,82 @@ func newCA(der []byte, key crypto.Signer) (*CA, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CA{cert: cert, key: key, der: der, leafKey: leafKey, leaves: map[string]*tls.Certificate{}}, nil
+	return &CA{cert: cert, key: key, der: der, leafKey: leafKey, leaves: map[string]*tls.Certificate{}, KeyPlace: KeyInMemory}, nil
 }
 
-// LoadCA reads the certificate authority from dir, or makes one and saves
-// it there when there is none (or it has expired): the certificate as
-// CACertFile, the key as CAKeyFile, readable by this user only. A new one
-// has to be installed on the phones again.
-func LoadCA(dir string) (*CA, error) {
+// Expires returns when the authority ends.
+func (c *CA) Expires() time.Time { return c.cert.NotAfter }
+
+// NeedsRenewal reports whether the authority ends within RenewBefore.
+func (c *CA) NeedsRenewal(now time.Time) bool { return !now.Before(c.cert.NotAfter.Add(-RenewBefore)) }
+
+// LoadCA reads the certificate authority from dir, or makes one when there
+// is none, it does not match its key, or it ends within RenewBefore (a
+// renewed one has Renewed set, and has to be installed on the phones
+// again). The certificate is kept in dir as CACertFile.
+//
+// keys, when not nil, keeps the private key (the macOS keychain, under
+// secret.TrafficCAKeyAccount). A key an earlier Pinky left in dir as
+// CAKeyFile moves into keys, and the file goes. Without keys the key is
+// kept in dir as CAKeyFile, readable by this user only.
+func LoadCA(dir string, keys secret.Store) (*CA, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	certPath, keyPath := filepath.Join(dir, CACertFile), filepath.Join(dir, CAKeyFile)
-	if ca, err := readCA(certPath, keyPath); err == nil && time.Now().Before(ca.cert.NotAfter.Add(-24*time.Hour)) {
-		return ca, nil
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("traffic: read the certificate authority: %w", err)
+	}
+	had := err == nil
+	if had {
+		keyPEM, place, err := readKey(ctx, keyPath, keys)
+		switch {
+		case err == nil:
+			ca, err := parseCA(certPEM, keyPEM)
+			if err == nil && !ca.NeedsRenewal(time.Now()) {
+				ca.KeyPlace = place
+				if place == KeyInFile && keys != nil {
+					// An earlier Pinky kept it in a file: move it.
+					if err := keys.Save(secret.TrafficCAKeyAccount, string(keyPEM)); err != nil {
+						return nil, fmt.Errorf("traffic: move the certificate authority's key into the keychain: %w", err)
+					}
+					ca.KeyPlace = KeyInKeychain
+					if err := os.Remove(keyPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+						return nil, fmt.Errorf("traffic: remove the old key file: %w", err)
+					}
+				}
+				return ca, nil
+			}
+		case !errors.Is(err, os.ErrNotExist) && !errors.Is(err, secret.ErrNotFound):
+			return nil, fmt.Errorf("traffic: read the certificate authority's key: %w", err)
+		}
 	}
 	ca, err := NewCA()
 	if err != nil {
 		return nil, err
 	}
+	ca.Renewed = had
 	keyDER, err := x509.MarshalPKCS8PrivateKey(ca.key)
 	if err != nil {
 		return nil, err
 	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	if err := writeFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), 0o600); err != nil {
-		return nil, err
+	if keys != nil {
+		if err := keys.Save(secret.TrafficCAKeyAccount, string(keyPEM)); err != nil {
+			return nil, fmt.Errorf("traffic: keep the certificate authority's key in the keychain: %w", err)
+		}
+		ca.KeyPlace = KeyInKeychain
+		if err := os.Remove(keyPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	} else {
+		if err := writeFile(keyPath, keyPEM, 0o600); err != nil {
+			return nil, err
+		}
+		ca.KeyPlace = KeyInFile
 	}
 	if err := writeFile(certPath, ca.CertPEM(), 0o600); err != nil {
 		return nil, err
@@ -128,15 +198,26 @@ func LoadCA(dir string) (*CA, error) {
 	return ca, nil
 }
 
-func readCA(certPath, keyPath string) (*CA, error) {
-	certPEM, err := os.ReadFile(certPath)
-	if err != nil {
-		return nil, err
+// readKey reads the CA's key from keys, or from the file an earlier Pinky
+// (or one without keys) wrote.
+func readKey(ctx context.Context, keyPath string, keys secret.Store) ([]byte, string, error) {
+	if keys != nil {
+		k, err := secret.Get(ctx, keys, secret.TrafficCAKeyAccount)
+		if err == nil {
+			return []byte(k), KeyInKeychain, nil
+		}
+		if !errors.Is(err, secret.ErrNotFound) {
+			return nil, "", err
+		}
 	}
-	keyPEM, err := os.ReadFile(keyPath)
+	b, err := os.ReadFile(keyPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	return b, KeyInFile, nil
+}
+
+func parseCA(certPEM, keyPEM []byte) (*CA, error) {
 	cb, _ := pem.Decode(certPEM)
 	kb, _ := pem.Decode(keyPEM)
 	if cb == nil || kb == nil {
@@ -150,7 +231,15 @@ func readCA(certPath, keyPath string) (*CA, error) {
 	if !ok {
 		return nil, errors.New("the key cannot sign")
 	}
-	return newCA(cb.Bytes, signer)
+	ca, err := newCA(cb.Bytes, signer)
+	if err != nil {
+		return nil, err
+	}
+	pub, ok := ca.cert.PublicKey.(interface{ Equal(crypto.PublicKey) bool })
+	if !ok || !pub.Equal(signer.Public()) {
+		return nil, errors.New("the key is not the certificate's")
+	}
+	return ca, nil
 }
 
 // writeFile writes a file through a temporary one, with perm from the
@@ -223,11 +312,15 @@ func (c *CA) Leaf(host string) (*tls.Certificate, error) {
 		return nil, err
 	}
 	now := time.Now()
+	end := now.Add(leafLife)
+	if end.After(c.cert.NotAfter) {
+		end = c.cert.NotAfter
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: host},
 		NotBefore:    now.Add(-time.Hour),
-		NotAfter:     now.Add(leafLife),
+		NotAfter:     end,
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
