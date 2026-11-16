@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1116.2 (2026-11-16)
 
 - On an iPhone, a swipe now scrolls by about its length instead of flinging past whole screens, so agents no longer skip rows.
 - Agents can now read a long list on iPhone screens that don't mark it as a list, such as the main page of Settings.
