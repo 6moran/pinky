@@ -71,7 +71,7 @@ func (s *Store) Prune(ctx context.Context, cutoff time.Time, keep []string) (Pru
 	if err := tx.Commit(); err != nil {
 		return out, err
 	}
-	return out, errors.Join(removeFiles(files), s.removePending(ctx))
+	return out, errors.Join(s.removePending(ctx), s.removeDropped(ctx, files))
 }
 
 // DeleteTasks deletes the tasks ids names, with their steps, approvals,
@@ -133,7 +133,7 @@ func (s *Store) DeleteTasks(ctx context.Context, ids, keep []string) (Pruned, er
 	if err := tx.Commit(); err != nil {
 		return out, err
 	}
-	return out, errors.Join(removeFiles(files), s.removePending(ctx))
+	return out, errors.Join(s.removePending(ctx), s.removeDropped(ctx, files))
 }
 
 // dropTasks deletes tasks with their steps, approvals and recordings in tx,
@@ -232,16 +232,9 @@ func (s *Store) dropMedia(ctx context.Context, tx *sql.Tx, candidates map[string
 	return files, nil
 }
 
-// removeFiles removes files whose rows are gone; one already gone is fine.
+// removeEach removes files whose rows are gone; one already gone is fine.
 // It tries every file, so one that cannot be removed leaves no other
-// behind, and returns all that failed.
-func removeFiles(files []string) error {
-	_, err := removeEach(files)
-	return err
-}
-
-// removeEach removes files, trying every one, and returns those it could
-// not remove, with their errors. One already gone is fine.
+// behind, and returns those it could not remove, with their errors.
 func removeEach(files []string) (failed []string, err error) {
 	var errs []error
 	for _, f := range files {

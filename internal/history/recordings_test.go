@@ -273,6 +273,99 @@ func TestRecordingsDirNotInPinkysRecordings(t *testing.T) {
 	}
 }
 
+// pending returns the recordings waiting in recording_removals.
+func pending(t *testing.T, s *Store) []string {
+	t.Helper()
+	left, err := s.strings(context.Background(), `SELECT path FROM recording_removals`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return left
+}
+
+// TestRecordingsDirReadOnly checks that a recording in a chosen folder that
+// is there but cannot be removed (a disk mounted read-only) is not
+// forgotten: it waits until it can be removed.
+func TestRecordingsDirReadOnly(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	if err := s.SetRecordingsDir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now()
+	saveEnded(t, s, "t1", at)
+	path := saveRecFile(t, s, "t1", at)
+	readOnly(t, filepath.Dir(path))
+
+	if _, err := s.DeleteTasks(ctx, []string{"t1"}, nil); err == nil {
+		t.Error("DeleteTasks reported no error for the recording it could not remove")
+	}
+	if left := pending(t, s); len(left) != 1 || left[0] != path {
+		t.Fatalf("recording_removals holds %v, want the recording", left)
+	}
+	// Still read-only at the next pass: it keeps waiting.
+	if err := s.RemovePendingRecordings(ctx); err == nil {
+		t.Error("RemovePendingRecordings reported no error for the recording it could not remove")
+	}
+	if left := pending(t, s); len(left) != 1 {
+		t.Fatalf("recording_removals holds %v after a failed removal", left)
+	}
+	writable(t, filepath.Dir(path))
+	if err := s.RemovePendingRecordings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("the recording of the deleted task is still there: %v", err)
+	}
+	if left := pending(t, s); len(left) != 0 {
+		t.Errorf("recording_removals holds %v", left)
+	}
+}
+
+// TestRecordingsDirBackReadOnly checks that a recording that waited for its
+// folder keeps waiting when the folder comes back read-only.
+func TestRecordingsDirBackReadOnly(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	disk := filepath.Join(t.TempDir(), "disk")
+	if err := os.Mkdir(disk, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRecordingsDir(disk); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now()
+	saveEnded(t, s, "t1", at)
+	path := saveRecFile(t, s, "t1", at)
+	away := disk + "-away"
+	if err := os.Rename(disk, away); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DeleteTasks(ctx, []string{"t1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(away, disk); err != nil {
+		t.Fatal(err)
+	}
+	readOnly(t, filepath.Dir(path))
+	if err := s.RemovePendingRecordings(ctx); err == nil {
+		t.Error("RemovePendingRecordings reported no error for the recording it could not remove")
+	}
+	if left := pending(t, s); len(left) != 1 || left[0] != path {
+		t.Fatalf("recording_removals holds %v, want the recording still waiting", left)
+	}
+	writable(t, filepath.Dir(path))
+	if err := s.RemovePendingRecordings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("the recording of the deleted task is still there: %v", err)
+	}
+	if left := pending(t, s); len(left) != 0 {
+		t.Errorf("recording_removals holds %v", left)
+	}
+}
+
 func TestCheckRecordingsDirFollowsLinks(t *testing.T) {
 	s := openStore(t)
 	own := filepath.Join(s.Dir(), "recordings")

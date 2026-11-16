@@ -345,7 +345,8 @@ func (s *Store) DeviceConnections(ctx context.Context) (map[string]string, error
 // tx deletes, to remove once it commits. A file in a chosen folder that is
 // not there now (a disk that is not plugged in) waits in recording_removals
 // instead, for removePending to remove when the folder is back: removing
-// it now would find nothing, and nothing would remove it later.
+// it now would find nothing, and nothing would remove it later. One that
+// is there but cannot be removed joins it after the commit (removeDropped).
 func (s *Store) dropRecordingFiles(ctx context.Context, tx *sql.Tx, rows []string) ([]string, error) {
 	var files []string
 	for _, row := range rows {
@@ -387,12 +388,32 @@ func (s *Store) removePending(ctx context.Context) error {
 		if _, err := os.Stat(filepath.Dir(p)); err != nil {
 			continue // still not there
 		}
-		for _, f := range []string{p, RecordingTemp(p)} {
-			if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
-				errs = append(errs, err)
-			}
+		// A file that cannot be removed yet (a read-only disk) keeps its
+		// row, to try again at the next pass.
+		if _, err := removeEach([]string{p, RecordingTemp(p)}); err != nil {
+			errs = append(errs, err)
+			continue
 		}
 		if _, err := s.db.ExecContext(ctx, `DELETE FROM recording_removals WHERE path = ?`, p); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// removeDropped removes the files of rows that are gone, as removeFiles
+// does. A recording in a folder the person chose that cannot be removed
+// now (a disk mounted read-only) waits in recording_removals, as one whose
+// folder is missing does, for removePending to try again: nothing else
+// would find it later. The caller holds s.mu for writing.
+func (s *Store) removeDropped(ctx context.Context, files []string) error {
+	failed, err := removeEach(files)
+	errs := []error{err}
+	for _, f := range failed {
+		if within(s.recDir, f) || within(s.mediaDir, f) || !strings.HasSuffix(f, ".mp4") {
+			continue // not a recording in a chosen folder
+		}
+		if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO recording_removals (path) VALUES (?)`, f); err != nil {
 			errs = append(errs, err)
 		}
 	}

@@ -568,7 +568,7 @@ func (s *Store) Wipe(ctx context.Context) error {
 	// The rows are gone: remove every file there is to remove, whatever
 	// fails on the way.
 	errs := []error{os.RemoveAll(s.mediaDir), os.MkdirAll(s.mediaDir, 0o700), os.RemoveAll(s.recDir),
-		removeFiles(outside), s.removePending(ctx)}
+		s.removePending(ctx), s.removeDropped(ctx, outside)}
 	_, err = s.db.ExecContext(ctx, "VACUUM")
 	return errors.Join(append(errs, err)...)
 }
