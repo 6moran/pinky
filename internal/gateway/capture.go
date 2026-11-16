@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"path/filepath"
@@ -17,18 +18,27 @@ import (
 )
 
 // Pinky's own traffic capture (docs/notes/traffic-capture.md): one HTTP
-// proxy on the computer (traffic.Proxy), listening only while a phone
-// whose Read network traffic switch is on runs a task (or the person has
-// its setup open), only on the address that phone reaches, and taking
-// connections only from that phone's own addresses. What it sees stays in
-// memory (traffic.Store) and is dropped when the task ends.
+// proxy on the computer (traffic.Proxy), only on the address a phone whose
+// Read network traffic switch is on reaches, and taking connections only
+// from that phone's own addresses. It listens at two ports there:
+//
+//   - The setup port (TrafficPort+1), whenever the switch is on: it hands
+//     out the certificate and a PAC file naming the proxy port, and
+//     proxies nothing.
+//   - The proxy port (TrafficPort), only while the phone runs a task.
+//     Outside tasks nothing listens there, so a phone set to the PAC file
+//     connects directly.
+//
+// What it sees stays in memory (traffic.Store) and is dropped when the
+// task ends. Hosts on the blocklist (traffic.BlockedHosts and the
+// person's own, SetTrafficBlocklist) pass through undecrypted.
 //
 // The phone reaches it in one of two ways:
 //
-//   - The person sets the phone's Wi-Fi HTTP proxy to the address Pinky
-//     shows (iPhone, Android). Pinky learns the phone's address from its
-//     connection (driver.NetAddresser) and listens on this computer's
-//     address on the same network.
+//   - The person sets the phone's Wi-Fi proxy to Automatic with the PAC
+//     URL Pinky shows (iPhone, Android). Pinky learns the phone's address
+//     from its connection (driver.NetAddresser) and listens on this
+//     computer's address on the same network.
 //   - Android only, when the person turns on Route through Pinky during
 //     tasks: Pinky has the phone's 127.0.0.1:port reach the computer over
 //     adb (adb reverse) and sets the phone's global HTTP proxy to it for
@@ -72,10 +82,11 @@ type captureState struct {
 	caErr   error
 	clients map[netip.Addr]string // the phones' addresses, to their ids
 	routed  string                // the phone that reaches the proxy over adb reverse, at 127.0.0.1
-	listen  map[string][]string   // by phone: the addresses it should use as its proxy
+	listen  map[string][]string   // by phone: the proxy's addresses it uses during tasks
+	setupAt map[string][]string   // by phone: the setup listeners' addresses
 	problem map[string]string     // by phone: why nothing listens for it
 	hidden  map[string]int        // by phone: requests left out while the person held it
-	setup   map[string]bool       // phones whose setup the person has open
+	blocked map[string][]string   // by phone: the hosts the person blocked
 	routes  map[string]liveRoute  // routes made in this run
 	pending []history.TrafficRoute
 	addrs   map[string]addrSeen
@@ -99,9 +110,10 @@ func (g *Gateway) initCapture() {
 	g.cap.kick = make(chan struct{}, 1)
 	g.cap.clients = map[netip.Addr]string{}
 	g.cap.listen = map[string][]string{}
+	g.cap.setupAt = map[string][]string{}
 	g.cap.problem = map[string]string{}
 	g.cap.hidden = map[string]int{}
-	g.cap.setup = map[string]bool{}
+	g.cap.blocked = map[string][]string{}
 	g.cap.routes = map[string]liveRoute{}
 	g.cap.addrs = map[string]addrSeen{}
 	if g.store != nil {
@@ -111,6 +123,11 @@ func (g *Gateway) initCapture() {
 		} else {
 			g.log.Warn("history: traffic routes", "err", err)
 		}
+		if bl, err := g.store.TrafficBlocklists(context.Background()); err == nil {
+			g.cap.blocked = bl
+		} else {
+			g.log.Warn("history: traffic blocklists", "err", err)
+		}
 	}
 }
 
@@ -119,6 +136,13 @@ func (g *Gateway) trafficPort() int {
 		return g.opt.TrafficPort
 	}
 	return TrafficPort
+}
+
+func (g *Gateway) trafficSetupPort() int {
+	if g.opt.TrafficSetupPort > 0 {
+		return g.opt.TrafficSetupPort
+	}
+	return g.trafficPort() + 1
 }
 
 // captureSoon asks the capture loop to look again now.
@@ -148,9 +172,15 @@ func (g *Gateway) captureLoop() {
 }
 
 // proxyLocked returns the proxy, making it and loading the certificate
-// authority the first time. The caller holds g.cap.mu.
+// authority the first time, and again when the authority is due for
+// renewal (traffic.LoadCA makes the new one). The caller holds g.cap.mu.
 func (g *Gateway) proxyLocked() (*traffic.Proxy, error) {
 	c := &g.cap
+	if c.proxy != nil && g.opt.TrafficCA == nil && c.ca.NeedsRenewal(time.Now()) {
+		g.log.Info("traffic: renewing the certificate authority", "expires", c.ca.Expires())
+		c.proxy.Close()
+		c.proxy, c.ca = nil, nil
+	}
 	if c.proxy != nil {
 		return c.proxy, nil
 	}
@@ -160,7 +190,7 @@ func (g *Gateway) proxyLocked() (*traffic.Proxy, error) {
 		switch {
 		case ca != nil:
 		case g.opt.DataDir != "":
-			ca, err = traffic.LoadCA(filepath.Clean(g.opt.DataDir))
+			ca, err = traffic.LoadCA(filepath.Clean(g.opt.DataDir), g.opt.TrafficKeys)
 		default:
 			ca, err = traffic.NewCA()
 		}
@@ -171,8 +201,17 @@ func (g *Gateway) proxyLocked() (*traffic.Proxy, error) {
 		c.ca, c.caErr = ca, nil
 	}
 	c.proxy = &traffic.Proxy{CA: c.ca, Store: c.store, Client: g.trafficClient, Record: g.recordTraffic,
-		Transport: g.opt.TrafficTransport, Log: g.log}
+		Blocked: g.trafficBlocked, Transport: g.opt.TrafficTransport, Log: g.log}
 	return c.proxy, nil
+}
+
+// trafficBlocked is the proxy's Blocked: the built-in list and the hosts
+// the person blocked for the phone.
+func (g *Gateway) trafficBlocked(id, host string) bool {
+	g.cap.mu.Lock()
+	extra := g.cap.blocked[id]
+	g.cap.mu.Unlock()
+	return traffic.Blocked(host, extra)
 }
 
 // trafficClient is the proxy's Client: the phone at addr, if a phone
@@ -219,29 +258,26 @@ func (g *Gateway) dropTraffic(id string) {
 type captureWant struct {
 	id       string
 	provider driver.Provider
+	running  bool // its task runs: the proxy listens for it
 	route    bool // through its cable, by the person's switch
 }
 
 // syncCapture opens and closes the proxy's listeners and the Android
-// routes for what runs now.
+// routes for what runs now: the setup listener for every phone whose
+// switch is on, the proxy for those whose task runs.
 func (g *Gateway) syncCapture(ctx context.Context) {
 	g.cap.syncMu.Lock()
 	defer g.cap.syncMu.Unlock()
 	var want []captureWant
 	g.mu.Lock()
 	if !g.closed {
-		g.cap.mu.Lock()
 		for id, d := range g.devices {
 			if !g.trafficOn[id] || d.dev == nil {
 				continue
 			}
 			running := d.lease != nil && !d.lease.ended
-			if !running && !g.cap.setup[id] {
-				continue
-			}
-			want = append(want, captureWant{id: id, provider: d.provider, route: running && g.trafficRoute[id]})
+			want = append(want, captureWant{id: id, provider: d.provider, running: running, route: running && g.trafficRoute[id]})
 		}
-		g.cap.mu.Unlock()
 	}
 	g.mu.Unlock()
 	slices.SortFunc(want, func(a, b captureWant) int {
@@ -255,7 +291,7 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 	})
 
 	g.restorePending(ctx)
-	port := g.trafficPort()
+	port, setupPort := g.trafficPort(), g.trafficSetupPort()
 
 	// Routes no longer wanted go back first.
 	g.cap.mu.Lock()
@@ -277,6 +313,7 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 		}
 		clear(g.cap.clients)
 		clear(g.cap.listen)
+		clear(g.cap.setupAt)
 		clear(g.cap.problem)
 		g.cap.routed = ""
 		g.cap.mu.Unlock()
@@ -302,6 +339,7 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 	}
 	clients := map[netip.Addr]string{}
 	listen := map[string][]string{}
+	setupAt := map[string][]string{}
 	problem := map[string]string{}
 	keep := map[string]bool{}
 	for _, w := range want {
@@ -311,13 +349,26 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 				continue
 			}
 			at := net.JoinHostPort(ip.String(), strconv.Itoa(port))
+			sat := net.JoinHostPort(ip.String(), strconv.Itoa(setupPort))
+			if _, err := p.ListenSetup(sat, at); err != nil {
+				g.log.Warn("traffic: listen", "addr", sat, "err", err)
+				problem[w.id] = TrafficListenFailed
+				continue
+			}
+			keep[sat] = true
+			clients[a] = w.id
+			if !slices.Contains(setupAt[w.id], sat) {
+				setupAt[w.id] = append(setupAt[w.id], sat)
+			}
+			if !w.running {
+				continue
+			}
 			if _, err := p.Listen(at); err != nil {
 				g.log.Warn("traffic: listen", "addr", at, "err", err)
 				problem[w.id] = TrafficListenFailed
 				continue
 			}
 			keep[at] = true
-			clients[a] = w.id
 			if !slices.Contains(listen[w.id], at) {
 				listen[w.id] = append(listen[w.id], at)
 			}
@@ -329,7 +380,7 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 				keep[net.JoinHostPort("127.0.0.1", strconv.Itoa(port))] = true
 			}
 		}
-		if len(listen[w.id]) == 0 && problem[w.id] == "" && !w.route {
+		if len(setupAt[w.id]) == 0 && problem[w.id] == "" && !w.route {
 			problem[w.id] = TrafficNoAddress
 		}
 	}
@@ -339,7 +390,7 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 		}
 	}
 	g.cap.mu.Lock()
-	g.cap.clients, g.cap.listen, g.cap.problem = clients, listen, problem
+	g.cap.clients, g.cap.listen, g.cap.setupAt, g.cap.problem = clients, listen, setupAt, problem
 	g.cap.mu.Unlock()
 }
 
@@ -545,14 +596,29 @@ func listenAddr(a netip.Addr, locals []netip.Prefix) (netip.Addr, bool) {
 // TrafficSetup is what the person needs to point a phone at Pinky's proxy
 // and trust its certificate, for Settings › Phones.
 type TrafficSetup struct {
-	// Proxies are the addresses ("192.168.1.5:9277") the phone sets as its
-	// HTTP proxy; empty while nothing listens for it.
-	Proxies []string
-	// CertURL is where the phone's browser downloads the certificate, at
-	// the first proxy address.
-	CertURL     string
+	// PACURL is the proxy auto-config file the phone's Wi-Fi proxy is set
+	// to (Automatic): "http://192.168.1.5:9278/proxy.pac". It sends the
+	// phone to the proxy during tasks and directly otherwise. Empty while
+	// Pinky knows no address for the phone.
+	PACURL string
+	// CertURL is where the phone's browser downloads the certificate.
+	CertURL string
+	// Proxies are the proxy's addresses ("192.168.1.5:9277") while the
+	// phone's task runs; empty otherwise.
+	Proxies     []string
 	CAName      string
 	Fingerprint string
+	// CAExpires is when the certificate ends; Pinky makes a new one
+	// traffic.RenewBefore that, and CARenewed says it did in this run: the
+	// phone has to install it again.
+	CAExpires time.Time
+	CARenewed bool
+	// KeyPlace is where the certificate's private key is kept
+	// (traffic.KeyInKeychain, KeyInFile, KeyInMemory).
+	KeyPlace string
+	// Blocklist is the hosts the person blocked for the phone, on top of
+	// traffic.BlockedHosts.
+	Blocklist []string
 	// CanRoute: an Android phone Pinky can route through its cable.
 	CanRoute bool
 	// Route is the person's switch, Routed whether the phone's proxy is set
@@ -578,36 +644,53 @@ func (g *Gateway) TrafficSetup(deviceID string) (TrafficSetup, error) {
 	s.Proxies = slices.Clone(g.cap.listen[d.id])
 	s.Problem = g.cap.problem[d.id]
 	_, s.Routed = g.cap.routes[d.id]
+	s.Blocklist = slices.Clone(g.cap.blocked[d.id])
 	if s.Problem == "" && g.cap.caErr != nil {
 		s.Problem = TrafficNoCA
 	}
-	if g.cap.ca != nil {
-		s.CAName, s.Fingerprint = g.cap.ca.Name(), g.cap.ca.Fingerprint()
+	if ca := g.cap.ca; ca != nil {
+		s.CAName, s.Fingerprint = ca.Name(), ca.Fingerprint()
+		s.CAExpires, s.CARenewed, s.KeyPlace = ca.Expires(), ca.Renewed, ca.KeyPlace
 	}
-	if len(s.Proxies) > 0 {
-		s.CertURL = "http://" + s.Proxies[0] + traffic.CertPath
+	if at := g.cap.setupAt[d.id]; len(at) > 0 {
+		s.PACURL = "http://" + at[0] + traffic.PACPath
+		s.CertURL = "http://" + at[0] + traffic.CertPath
 	}
 	return s, nil
 }
 
-// ServeTrafficCA keeps the proxy listening for a phone while the person
-// has its setup open (on), so that its browser can download the
-// certificate; requests are kept only while a task runs. It applies
-// shortly; TrafficSetup says the result.
-func (g *Gateway) ServeTrafficCA(deviceID string, on bool) error {
+// MaxTrafficBlocklist bounds the hosts a person blocks for one phone.
+const MaxTrafficBlocklist = 200
+
+// SetTrafficBlocklist sets the hosts Pinky never decrypts or records for a
+// phone, on top of traffic.BlockedHosts: each is a domain, and its
+// subdomains match too. What the person typed is cleaned
+// (traffic.CleanHosts); the list is saved per phone and applies to new
+// connections at once.
+func (g *Gateway) SetTrafficBlocklist(deviceID string, hosts []string) ([]string, error) {
 	d, err := g.device(deviceID)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	hosts = traffic.CleanHosts(hosts)
+	slices.Sort(hosts)
+	if len(hosts) > MaxTrafficBlocklist {
+		return nil, fmt.Errorf("at most %d hosts", MaxTrafficBlocklist)
 	}
 	g.cap.mu.Lock()
-	if on {
-		g.cap.setup[d.id] = true
+	if len(hosts) == 0 {
+		delete(g.cap.blocked, d.id)
 	} else {
-		delete(g.cap.setup, d.id)
+		g.cap.blocked[d.id] = hosts
+	}
+	if g.store != nil {
+		// Queued under the lock, so saves keep the order of the changes.
+		id, hs := d.id, slices.Clone(hosts)
+		g.rec.do(func(ctx context.Context) error { return g.store.SetTrafficBlocklist(ctx, id, hs) })
 	}
 	g.cap.mu.Unlock()
-	g.captureSoon()
-	return nil
+	g.emit(Event{Kind: EventDevices, DeviceID: d.id})
+	return hosts, nil
 }
 
 // ErrTrafficOff is returned when a phone's traffic switch is off.

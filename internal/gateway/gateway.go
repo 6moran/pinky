@@ -18,6 +18,7 @@ import (
 	"github.com/DIYgod/pinky/internal/driver"
 	"github.com/DIYgod/pinky/internal/history"
 	"github.com/DIYgod/pinky/internal/policy"
+	"github.com/DIYgod/pinky/internal/secret"
 	"github.com/DIYgod/pinky/internal/traffic"
 )
 
@@ -64,13 +65,18 @@ type Options struct {
 	PIN func(ctx context.Context, deviceID string) (string, error)
 
 	// Pinky's traffic capture (capture.go). TrafficPort is the proxy's
-	// port, default TrafficPort. TrafficCA is its certificate authority;
-	// nil loads (or makes) the one in DataDir, or one in memory without
-	// DataDir. TrafficTransport sends the requests on, nil directly.
+	// port, default TrafficPort; TrafficSetupPort the port of its setup
+	// files (the certificate and the PAC file), default TrafficPort+1.
+	// TrafficCA is its certificate authority; nil loads (or makes) the one
+	// in DataDir, or one in memory without DataDir. TrafficKeys keeps that
+	// authority's private key (the macOS keychain); nil keeps it in a file
+	// in DataDir. TrafficTransport sends the requests on, nil directly.
 	// TrafficInterfaces lists this computer's addresses; nil asks the
 	// system.
 	TrafficPort       int
+	TrafficSetupPort  int
 	TrafficCA         *traffic.CA
+	TrafficKeys       secret.Store
 	TrafficTransport  http.RoundTripper
 	TrafficInterfaces func() ([]netip.Prefix, error)
 

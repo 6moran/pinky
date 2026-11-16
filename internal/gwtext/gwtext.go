@@ -66,11 +66,14 @@ var (
 
 	reReadLogs    = re(`^[Rr]ead the logs of (.+)$`)
 	reReadTraffic = re(`^[Rr]ead the network traffic of (.+)$`)
+	// Before reReadTraffic, which would take the rest as the phone.
+	reReadTrafficWith = re(`^[Rr]ead the network traffic of (.+) with request and response bodies$`)
+	reReadBodies      = re(`^[Rr]ead the request and response bodies in the network traffic of (.+)$`)
 )
 
 // action is a parsed action, which says itself as done or as asked.
 type action struct {
-	verb                 string // tap, longpress, type, swipe, swipefrom, zoomin, zoomout, turn, drag, dragfrom, press, open, openlink, openin, openregion, set, stoplocation, copy, copymany, list, copyfrom, copyto, receive, install, update, uninstall, stop, installfrom, readlogs, readtraffic
+	verb                 string // tap, longpress, type, swipe, swipefrom, zoomin, zoomout, turn, drag, dragfrom, press, open, openlink, openin, openregion, set, stoplocation, copy, copymany, list, copyfrom, copyto, receive, install, update, uninstall, stop, installfrom, readlogs, readtraffic, readtrafficwith, readbodies
 	label, text, x, y    string
 	x2, y2, dir, key     string
 	app, files, phone    string
@@ -205,6 +208,12 @@ func parseAsked(s string) (action, bool) {
 	}
 	if m := reReadLogs.FindStringSubmatch(s); m != nil {
 		return action{verb: "readlogs", app: m[1]}, true
+	}
+	if m := reReadTrafficWith.FindStringSubmatch(s); m != nil {
+		return action{verb: "readtrafficwith", phone: m[1]}, true
+	}
+	if m := reReadBodies.FindStringSubmatch(s); m != nil {
+		return action{verb: "readbodies", phone: m[1]}, true
 	}
 	if m := reReadTraffic.FindStringSubmatch(s); m != nil {
 		return action{verb: "readtraffic", phone: m[1]}, true
@@ -417,6 +426,10 @@ func (a action) ask() string {
 		return locales.GwDoReadLogs(a.app)
 	case "readtraffic":
 		return locales.GwDoReadTraffic(a.phone)
+	case "readtrafficwith":
+		return locales.GwDoReadTrafficWithBodies(a.phone)
+	case "readbodies":
+		return locales.GwDoReadTrafficBodies(a.phone)
 	}
 	return ""
 }
@@ -768,7 +781,7 @@ var (
 	reTapTitle    = re(`^(Tap|Long-press|Type into|Swipe|Drag) “(.*)”\?$`)
 	rePressTitle  = re(`^Press (\S+) in “(.*)”\?$`)
 	reAgentTitle  = re(`^Let (.+) use your phones\?$`)
-	reAskedTitle  = re(`^((?:Copy|Install|Update|Uninstall|Stop) .+|Read the logs of .+|Read the network traffic of .+)\?$`)
+	reAskedTitle  = re(`^((?:Copy|Install|Update|Uninstall|Stop) .+|Read the logs of .+|Read the network traffic of .+|Read the request and response bodies in the network traffic of .+)\?$`)
 	reQuestion    = re(`^(.+)\?$`)
 )
 

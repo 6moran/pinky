@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/DIYgod/pinky/internal/gateway"
 	"github.com/DIYgod/pinky/internal/mcp"
 	"github.com/DIYgod/pinky/internal/policy"
+	"github.com/DIYgod/pinky/internal/secret"
 	"github.com/DIYgod/pinky/internal/telemetry"
 	"github.com/DIYgod/pinky/internal/update"
 	"github.com/DIYgod/pinky/internal/webmirror"
@@ -208,6 +210,7 @@ func startGateway(c gatewayConfig) (*runningGateway, error) {
 		// and socket clients may answer approvals (for scripted tests).
 		TrustNewAgents: c.Fake,
 		PIN:            c.PIN,
+		TrafficKeys:    trafficKeys(c.Fake),
 	})
 	if err != nil {
 		ln.Close()
@@ -243,4 +246,14 @@ func (r *runningGateway) Close() {
 	}
 	r.G.Close()
 	r.ln.Close()
+}
+
+// trafficKeys is where Pinky keeps its traffic certificate's private key:
+// the keychain on macOS; elsewhere, and for fake phones, a file in the
+// data folder that only this user reads (docs/notes/traffic-capture.md).
+func trafficKeys(fake bool) secret.Store {
+	if fake || runtime.GOOS != "darwin" || !secret.Supported(secret.System()) {
+		return nil
+	}
+	return secret.System()
 }

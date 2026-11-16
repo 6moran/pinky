@@ -105,3 +105,46 @@ func (s *Store) TrafficRoutes(ctx context.Context) ([]TrafficRoute, error) {
 	}
 	return out, rows.Err()
 }
+
+// SetTrafficBlocklist saves the hosts Pinky never decrypts or records for a
+// phone, on top of its built-in list; none removes them. The list stays
+// when reading the phone's traffic is turned off.
+func (s *Store) SetTrafficBlocklist(ctx context.Context, deviceID string, hosts []string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM traffic_blocklist WHERE device_id = ?`, deviceID); err != nil {
+		return err
+	}
+	for _, h := range hosts {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO traffic_blocklist (device_id, host) VALUES (?, ?)`, deviceID, h); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// TrafficBlocklists returns the hosts the person blocked, by phone, in the
+// order of their names.
+func (s *Store) TrafficBlocklists(ctx context.Context) (map[string][]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rows, err := s.db.QueryContext(ctx, `SELECT device_id, host FROM traffic_blocklist ORDER BY device_id, host`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var id, h string
+		if err := rows.Scan(&id, &h); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], h)
+	}
+	return out, rows.Err()
+}

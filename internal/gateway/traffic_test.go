@@ -17,6 +17,7 @@ import (
 	"github.com/DIYgod/pinky/internal/driver"
 	"github.com/DIYgod/pinky/internal/driver/fake"
 	"github.com/DIYgod/pinky/internal/history"
+	"github.com/DIYgod/pinky/internal/traffic"
 )
 
 // addrProvider is the fake provider with the phone on a network: its
@@ -97,7 +98,7 @@ func trafficOptions(t *testing.T, p driver.Provider, dir string) Options {
 		Providers: []driver.Provider{p}, Policy: testPolicy(t), TrustNewAgents: true, DataDir: dir,
 		ApprovalTimeout: 3 * time.Second, MaxBlock: 2 * time.Second, SettleMax: 200 * time.Millisecond,
 		PollInterval: 5 * time.Millisecond, DiscoverEvery: 20 * time.Millisecond, NoScreenshots: true,
-		TrafficPort: freePort(t),
+		TrafficPort: freePort(t), TrafficSetupPort: freePort(t),
 		TrafficInterfaces: func() ([]netip.Prefix, error) {
 			return []netip.Prefix{netip.MustParsePrefix("127.0.0.1/8"), netip.MustParsePrefix("192.168.1.5/24")}, nil
 		},
@@ -170,8 +171,10 @@ func TestPhoneTraffic(t *testing.T) {
 		setup, _ = g.TrafficSetup("pixel")
 		return len(setup.Proxies) == 1
 	})
-	if !strings.HasPrefix(setup.Proxies[0], "127.0.0.1:") || setup.CertURL != "http://"+setup.Proxies[0]+"/pinky-ca.crt" ||
-		!strings.HasPrefix(setup.CAName, "Pinky Traffic CA ") || setup.CanRoute {
+	setupAt := "127.0.0.1:" + strconv.Itoa(g.trafficSetupPort())
+	if setup.Proxies[0] != "127.0.0.1:"+strconv.Itoa(g.trafficPort()) || setup.PACURL != "http://"+setupAt+"/proxy.pac" ||
+		setup.CertURL != "http://"+setupAt+"/pinky-ca.crt" || !strings.HasPrefix(setup.CAName, "Pinky Traffic CA ") || setup.CanRoute ||
+		setup.KeyPlace != traffic.KeyInFile || setup.CARenewed || time.Until(setup.CAExpires) < 300*24*time.Hour {
 		t.Fatalf("setup %+v", setup)
 	}
 	phone := phoneClient(setup.Proxies[0])
@@ -223,8 +226,11 @@ func TestPhoneTraffic(t *testing.T) {
 	if res := s.Traffic(ctx, TrafficRequest{Path: "/v2"}); res.Log != "" || !strings.Contains(res.Message, "match those filters") {
 		t.Fatalf("no match: %+v", res)
 	}
-	res = s.Traffic(ctx, TrafficRequest{ID: "1", Bodies: true})
-	mustStatus(t, res, StatusSettled)
+	if res := s.Traffic(ctx, TrafficRequest{ID: "1"}); res.Status != StatusSettled || strings.Contains(res.Log, "hunter2") || strings.Contains(res.Log, "amy") {
+		t.Fatalf("headers only: %+v", res)
+	}
+	// The first read of bodies asks once more.
+	res = bodiesApproved(t, g, s, TrafficRequest{ID: "1", Bodies: true})
 	for _, want := range []string{"Authorization: [redacted]", "Content-Type: application/json",
 		`{"password":"[redacted]","user":"amy"}`, `{"code":0,"name":"Amy","token":"[redacted]"}`} {
 		if !strings.Contains(res.Log, want) {
@@ -237,6 +243,7 @@ func TestPhoneTraffic(t *testing.T) {
 	if res := s.Traffic(ctx, TrafficRequest{ID: "9"}); res.Error != ErrNotFound {
 		t.Fatalf("a request Pinky does not hold: %+v", res)
 	}
+	mustStatus(t, s.Traffic(ctx, TrafficRequest{ID: "2", Bodies: true}), StatusSettled)
 	if len(g.Needs()) != 0 {
 		t.Fatalf("asked again: %+v", g.Needs())
 	}
@@ -275,7 +282,8 @@ func TestPhoneTraffic(t *testing.T) {
 		}
 	}
 	if texts[0] != "Blocked by “Network traffic”: read the network traffic of Pixel 9" ||
-		!contains(texts, "Read 2 network requests of Pixel 9") || !contains(texts, "Read network request 1 of Pixel 9") {
+		!contains(texts, "Read 2 network requests of Pixel 9") || !contains(texts, "Read network request 1 of Pixel 9") ||
+		!contains(texts, "Waiting for you: Read the request and response bodies in the network traffic of Pixel 9") {
 		t.Fatalf("steps %q", texts)
 	}
 
@@ -290,11 +298,128 @@ func TestPhoneTraffic(t *testing.T) {
 	mustStatus(t, s.Traffic(ctx, TrafficRequest{}), StatusBlocked)
 	waitUntil(t, "the proxy to stop", func() bool {
 		st, _ := g.TrafficSetup("pixel")
-		return len(st.Proxies) == 0
+		return len(st.Proxies) == 0 && st.PACURL == ""
 	})
-	if c, err := net.DialTimeout("tcp", setup.Proxies[0], time.Second); err == nil {
-		c.Close()
-		t.Fatal("the proxy still listens with the switch off")
+	for _, at := range []string{setup.Proxies[0], setupAt} {
+		if c, err := net.DialTimeout("tcp", at, time.Second); err == nil {
+			c.Close()
+			t.Fatalf("%s still listens with the switch off", at)
+		}
+	}
+}
+
+// bodiesApproved reads bodies, allowing them for the task when asked.
+func bodiesApproved(t *testing.T, g *Gateway, s *Session, req TrafficRequest) *Result {
+	t.Helper()
+	done := make(chan *Result, 1)
+	go func() { done <- s.Traffic(context.Background(), req) }()
+	n := waitNeedKind(t, g, NeedApproval)
+	if n.Rule != RuleTraffic || n.Title != "Read the request and response bodies in the network traffic of Pixel 9?" || !n.AllowTask || n.AlwaysAllow {
+		t.Fatalf("approval %+v", n)
+	}
+	if err := g.Decide(n.ID, AllowTask, ""); err != nil {
+		t.Fatal(err)
+	}
+	res := <-done
+	mustStatus(t, res, StatusSettled)
+	return res
+}
+
+// A first read that asks for bodies asks once, for both.
+func TestTrafficFirstReadWithBodies(t *testing.T) {
+	ctx := context.Background()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") }))
+	defer upstream.Close()
+	g, np := newTrafficGateway(t)
+	np.setAddrs(loopback)
+	if err := g.SetTraffic("pixel", true); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := connect(t, g, "Look at requests")
+	var setup TrafficSetup
+	waitUntil(t, "the proxy", func() bool { setup, _ = g.TrafficSetup("pixel"); return len(setup.Proxies) == 1 })
+	resp, err := phoneClient(setup.Proxies[0]).Get(upstream.URL + "/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	waitUntil(t, "the request", func() bool { n, _ := g.cap.store.Len(); return n == 1 })
+	done := make(chan *Result, 1)
+	go func() { done <- s.Traffic(ctx, TrafficRequest{ID: "1", Bodies: true}) }()
+	n := waitNeedKind(t, g, NeedApproval)
+	if n.Title != "Read the network traffic of Pixel 9 with request and response bodies?" {
+		t.Fatalf("approval %+v", n)
+	}
+	if err := g.Decide(n.ID, AllowTask, ""); err != nil {
+		t.Fatal(err)
+	}
+	if res := <-done; res.Status != StatusSettled || !strings.Contains(res.Log, "Response body:\nok") {
+		t.Fatalf("bodies: %+v", res)
+	}
+	mustStatus(t, s.Traffic(ctx, TrafficRequest{}), StatusSettled)
+	if len(g.Needs()) != 0 {
+		t.Fatalf("asked again: %+v", g.Needs())
+	}
+}
+
+// Hosts the person blocks pass through undecrypted and are kept only as
+// their host; the list is saved per phone.
+func TestTrafficBlocklist(t *testing.T) {
+	ctx := context.Background()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "secret balance") }))
+	defer upstream.Close()
+	dir := t.TempDir()
+	np := &addrProvider{Provider: fake.NewProvider(fake.NewDevice("pixel", "Pixel 9"))}
+	g, err := New(trafficOptions(t, np, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	np.setAddrs(loopback)
+	if err := g.SetTraffic("pixel", true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := g.SetTrafficBlocklist("pixel", []string{"https://127.0.0.1/login", "*.bank.example", "", "bank.example"})
+	if err != nil || strings.Join(got, ",") != "127.0.0.1,bank.example" {
+		t.Fatalf("SetTrafficBlocklist = %q, %v", got, err)
+	}
+	s, _ := connect(t, g, "Look at requests")
+	var setup TrafficSetup
+	waitUntil(t, "the proxy", func() bool { setup, _ = g.TrafficSetup("pixel"); return len(setup.Proxies) == 1 })
+	if strings.Join(setup.Blocklist, ",") != "127.0.0.1,bank.example" {
+		t.Fatalf("setup blocklist %q", setup.Blocklist)
+	}
+	resp, err := phoneClient(setup.Proxies[0]).Get(upstream.URL + "/balance?account=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	waitUntil(t, "the request", func() bool { n, _ := g.cap.store.Len(); return n == 1 })
+	res := waitApproved(t, g, s, TrafficRequest{})
+	if !strings.Contains(res.Log, " · not decrypted (blocked)") || strings.Contains(res.Log, "balance") ||
+		!strings.Contains(res.Message, "Blocked: 1 request") {
+		t.Fatalf("list: %+v", res)
+	}
+	res = s.Traffic(ctx, TrafficRequest{ID: "1"})
+	if res.Status != StatusSettled || !strings.Contains(res.Message, "only its host") || strings.Contains(res.Log, "headers") {
+		t.Fatalf("detail: %+v", res)
+	}
+	g.Close()
+
+	g2, err := New(trafficOptions(t, np, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g2.Close()
+	waitUntil(t, "the phone", func() bool { _, err := g2.TrafficSetup("pixel"); return err == nil })
+	if st, _ := g2.TrafficSetup("pixel"); strings.Join(st.Blocklist, ",") != "127.0.0.1,bank.example" {
+		t.Fatalf("saved blocklist %q", st.Blocklist)
+	}
+	if _, err := g2.SetTrafficBlocklist("pixel", nil); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := g2.TrafficSetup("pixel"); len(st.Blocklist) != 0 {
+		t.Fatalf("cleared blocklist %q", st.Blocklist)
 	}
 }
 
@@ -322,7 +447,9 @@ func waitApproved(t *testing.T, g *Gateway, s *Session, req TrafficRequest) *Res
 	return res
 }
 
-// The task's end drops its requests and stops the proxy.
+// The task's end drops its requests and stops the proxy; the setup
+// listener stays for the PAC file and the certificate, and proxies
+// nothing.
 func TestTrafficDroppedAtTaskEnd(t *testing.T) {
 	ctx := context.Background()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") }))
@@ -345,15 +472,27 @@ func TestTrafficDroppedAtTaskEnd(t *testing.T) {
 	if n, _ := g.cap.store.Len(); n != 0 {
 		t.Fatalf("%d requests kept after the task", n)
 	}
-	waitUntil(t, "the proxy to stop", func() bool { st, _ := g.TrafficSetup("pixel"); return len(st.Proxies) == 0 })
-
-	// The person's setup keeps it listening for the certificate, and keeps
-	// no request.
-	if err := g.ServeTrafficCA("pixel", true); err != nil {
+	proxy := setup.Proxies[0]
+	waitUntil(t, "the proxy to stop", func() bool { setup, _ = g.TrafficSetup("pixel"); return len(setup.Proxies) == 0 })
+	// The proxy's port is closed, so a phone set to the PAC file connects
+	// directly.
+	if c, err := net.DialTimeout("tcp", proxy, time.Second); err == nil {
+		c.Close()
+		t.Fatal("the proxy listens outside a task")
+	}
+	if setup.PACURL == "" {
+		t.Fatalf("no PAC file outside a task: %+v", setup)
+	}
+	resp, err = http.Get(setup.PACURL)
+	if err != nil {
 		t.Fatal(err)
 	}
-	waitUntil(t, "the setup listener", func() bool { setup, _ = g.TrafficSetup("pixel"); return len(setup.Proxies) == 1 })
-	resp, err = phoneClient(setup.Proxies[0]).Get(setup.CertURL)
+	pac, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(pac), `"PROXY `+proxy+`; DIRECT"`) {
+		t.Fatalf("PAC file:\n%s", pac)
+	}
+	resp, err = http.Get(setup.CertURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,17 +501,18 @@ func TestTrafficDroppedAtTaskEnd(t *testing.T) {
 	if len(der) == 0 || resp.Header.Get("Content-Type") != "application/x-x509-ca-cert" {
 		t.Fatalf("certificate %q, %d bytes", resp.Header.Get("Content-Type"), len(der))
 	}
-	resp, err = phoneClient(setup.Proxies[0]).Get(upstream.URL + "/b")
+	u, _ := url.Parse(setup.PACURL)
+	resp, err = phoneClient(u.Host).Get(upstream.URL + "/b")
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	time.Sleep(50 * time.Millisecond)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("the setup listener proxied: %d", resp.StatusCode)
+	}
 	if n, _ := g.cap.store.Len(); n != 0 {
 		t.Fatalf("%d requests kept outside a task", n)
 	}
-	g.ServeTrafficCA("pixel", false)
-	waitUntil(t, "the setup listener to stop", func() bool { st, _ := g.TrafficSetup("pixel"); return len(st.Proxies) == 0 })
 }
 
 func newRouteGateway(t *testing.T, dir string) (*Gateway, *routeProvider) {

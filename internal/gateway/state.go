@@ -281,8 +281,10 @@ type lease struct {
 	// listen to the phone until the task ends (driver.LogListener).
 	logsRead bool
 	// trafficGranted is set when the person allowed the agent to read the
-	// phone's network traffic for the rest of the task (traffic.go).
-	trafficGranted bool
+	// phone's network traffic for the rest of the task (traffic.go), and
+	// trafficBodiesGranted when they allowed its bodies too.
+	trafficGranted       bool
+	trafficBodiesGranted bool
 	// settingsGranted is set when the person allowed changing the phone's
 	// settings for the rest of the task (switches.go).
 	settingsGranted bool

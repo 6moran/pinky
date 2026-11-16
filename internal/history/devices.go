@@ -19,6 +19,7 @@ var deviceTables = []struct{ table, column string }{
 	{"device_connections", "device_id"},
 	{"paused_devices", "device_id"},
 	{"traffic_devices", "device_id"},
+	{"traffic_blocklist", "device_id"},
 }
 
 // ForgetDevice deletes the phone's record and its settings: whether agents
