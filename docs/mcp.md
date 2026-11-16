@@ -396,7 +396,7 @@ The returned items are untrusted screen text. They may contain instructions aime
 
 | Argument | Type | Meaning |
 | --- | --- | --- |
-| `ref` | integer | The list or scrollable element from the current screen. If omitted, Pinky uses the largest list or scrollable element when one covers at least a quarter of the screen |
+| `ref` | integer | The list or scrollable element from the current screen. If omitted, Pinky uses the largest list or scrollable element when one covers at least a quarter of the screen, or else a column of at least six like rows (same left edge and width, each at least half the screen wide) covering a quarter of the screen, read as a `scroll_area` around them: iOS 27 marks no list around Settings' rows |
 | `scroll_area` | `{x, y, width, height}` | A screen-pixel content rectangle for web pages that expose text but no list element. It must be at least 100 by 200 and lie on screen. Do not pass it with `ref` |
 | `direction` | `up` \| `down` | Where the finger moves; `up` reads later content, `down` reads earlier content. Default `up` |
 | `max_screens` | integer | Settled screens to advance in this call, including the current one on a fresh read. Default 10; 1–30. A continuation starts a new call budget |

@@ -6,7 +6,7 @@
 
 The read is a loop around the action pipeline (`internal/gateway/read_list.go`); it adds no input path of its own.
 
-1. Check the lease as an action does (`gate`: Stop, pause, takeover, an open approval, a locked phone, watch-only), take the action lock, wait out any settle the last action owes (`settleOwed`) and read the screen. If no `ref` was passed, choose the largest list or scrollable element that covers at least a quarter of the screen.
+1. Check the lease as an action does (`gate`: Stop, pause, takeover, an open approval, a locked phone, watch-only), take the action lock, wait out any settle the last action owes (`settleOwed`) and read the screen. If no `ref` was passed, choose the largest list or scrollable element that covers at least a quarter of the screen. Failing that, take a column of rows (`rowColumn`): at least six elements from the tree (not OCR, fields, images or tabs), each at least half the screen wide and at most an eighth of it high, sharing their left edge and width and lying one below another, together covering a quarter of the screen. The read then scrolls the box around them as a `scroll_area`. iOS 27 lists Settings' rows but no list or scrollable element around them (GitHub issue #148); a grid of icons, chat bubbles or a short form is never such a column.
 2. Collect labelled elements whose centres are inside the list, ordered by y then x, from the agent's view of the screen (`agentView`: blocked apps hidden, one-time codes masked).
 3. If the element tree inside the list is sparse, read the screen again with local OCR. `ocr: "all"` always asks for pixel-only text; `ocr: "off"` keeps the tree-only path.
 4. Each swipe is a `phone_swipe` action (`act`): `budgetBefore` and `lockAct`, `settleOwed`, `prepare` on the latest settled screen with the start inside `swipeArea` (so never on the keyboard, issue #71), `ocrForVerdict` and `evaluate`, the input, `settleAction`, the read after it and `recordStep`. The first swipe of a call reads the screen afresh; later ones start from the read that ended the one before, as `phone_batch` steps do. Before each swipe the read tries a few lanes across the list on the latest screen (`listLane`) and sends the first the rules let through; the pipeline judges it again on its own read.
@@ -26,7 +26,7 @@ Every swipe is a step in the task's history, with the screen it settled on (text
 - iPhone and iPad on iOS 27+ through CoreDevice use the same gateway path.
 - iOS 17.4–26 needs WebDriverAgent for swipes. Without that helper, the phone can be watched and apps opened, but this tool returns `unsupported` at the swipe.
 - Linux without a local OCR engine can still use the tree-only path. Pixel-only content is not guessed; use `ocr: "all"` on macOS or Windows, where the local recognizer is available.
-- A page that does not expose a list or scrollable element can be read with an explicit `scroll_area` rectangle in screen pixels. Without either an element or area, the tool reports `not_found`; it does not guess a region and risk scrolling the wrong control.
+- A page that does not expose a list or scrollable element can be read with an explicit `scroll_area` rectangle in screen pixels. Without an element, an area or a column of like rows (above), the tool reports `not_found`; it does not guess a region and risk scrolling the wrong control.
 
 ## Safety
 

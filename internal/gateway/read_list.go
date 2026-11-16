@@ -179,7 +179,7 @@ func (g *Gateway) readList(ctx context.Context, l *lease, req ReadListRequest) *
 		return withScan(res, view)
 	}
 	st.app = first.App
-	list, res := listOn(first, req.Ref, cursorList(cursor), req.Area)
+	list, column, res := startList(first, req, cursor)
 	if res != nil {
 		return withScan(res, view)
 	}
@@ -189,7 +189,12 @@ func (g *Gateway) readList(ctx context.Context, l *lease, req ReadListRequest) *
 				"The list the continuation belongs to is not on the screen anymore. Read it again without continuation."), view)
 		}
 		return withScan(errResult(ErrNotFound,
-			"No list was found on this screen. Pass ref with the list or scrollable element to read."), view)
+			"No list was found on this screen. Pass ref with the list or scrollable element to read, or scroll_area with the part of the screen that scrolls."), view)
+	}
+	if column != nil {
+		// A column of rows is read as the scroll area it covers.
+		st.req.Area = column
+		req = st.req
 	}
 	if cursor != nil && !sameApp(cursor.app, first.App) {
 		return withScan(errResult(ErrInvalidArgument,
@@ -339,7 +344,7 @@ func (g *Gateway) firstListScreen(ctx context.Context, l *lease, req ReadListReq
 		return nil, res
 	}
 	if req.OCR == "auto" {
-		if list, _ := listOn(s, req.Ref, cursorList(cursor), req.Area); list.Role == "" || viewportNeedsOCR(s, list) {
+		if list, _, _ := startList(s, req, cursor); list.Role == "" || viewportNeedsOCR(s, list) {
 			if s, res = g.readListScreenOCR(ctx, l, ocrAuto); res != nil {
 				return nil, res
 			}
@@ -587,6 +592,89 @@ func largestList(s *screen.Screen) screen.Element {
 		return screen.Element{}
 	}
 	return largest
+}
+
+// startList finds the list a read starts on (listOn). With no ref, scroll
+// area or continuation, on a screen with no list or scrollable element
+// big enough, it falls back to a column of rows (rowColumn), returned
+// with its bounds as the area to read as a scroll_area: iOS 27 lists
+// Settings' rows but no element for the list that holds them (GitHub
+// issue #148).
+func startList(s *screen.Screen, req ReadListRequest, cursor *readCursor) (screen.Element, *screen.Rect, *Result) {
+	list, res := listOn(s, req.Ref, cursorList(cursor), req.Area)
+	if res != nil || list.Role != "" || req.Ref > 0 || req.Area != nil || cursor != nil {
+		return list, nil, res
+	}
+	if r, ok := rowColumn(s); ok {
+		return screen.Element{Role: screen.RoleList, Bounds: r}, &r, nil
+	}
+	return list, nil, nil
+}
+
+// readListMinRows is how many rows a column needs to be read as a list.
+const readListMinRows = 6
+
+// rowColumn finds a column of rows on a screen that marks no list: at
+// least readListMinRows elements from the tree, each at least half the
+// screen wide and at most an eighth of it high, that share their left
+// edge and width and lie one below another, together covering at least a
+// quarter of the screen, as a settings page's or a table's rows do. It
+// returns the box around them. Text read by OCR, fields, images and tabs
+// do not count, so a home screen, a form or a tab bar is never a column.
+func rowColumn(s *screen.Screen) (screen.Rect, bool) {
+	if s == nil || s.Width <= 0 || s.Height <= 0 {
+		return screen.Rect{}, false
+	}
+	var rows []screen.Rect
+	for _, e := range s.Elements {
+		b := e.Bounds
+		if e.Source == screen.SourceOCR || e.Hidden || b.Empty() || b.W*2 < s.Width || b.H*8 > s.Height {
+			continue
+		}
+		switch e.Role {
+		case screen.RoleButton, screen.RoleText, screen.RoleLink, screen.RoleSwitch, screen.RoleCheckbox, screen.RoleOther:
+			rows = append(rows, b)
+		}
+	}
+	tol := max(s.Width/40, 4)
+	near := func(a, b int) bool { return max(a-b, b-a) <= tol }
+	var best []screen.Rect
+	for _, r := range rows {
+		var col []screen.Rect
+		for _, o := range rows {
+			if near(o.X, r.X) && near(o.W, r.W) {
+				col = append(col, o)
+			}
+		}
+		// One row each: a cell and an element of the same size inside it
+		// count once.
+		sort.SliceStable(col, func(i, j int) bool { return col[i].Y < col[j].Y })
+		var distinct []screen.Rect
+		for _, o := range col {
+			if n := len(distinct); n > 0 && o.Y < distinct[n-1].Y+distinct[n-1].H/2 {
+				continue
+			}
+			distinct = append(distinct, o)
+		}
+		if len(distinct) > len(best) {
+			best = distinct
+		}
+	}
+	if len(best) < readListMinRows {
+		return screen.Rect{}, false
+	}
+	box := best[0]
+	for _, o := range best[1:] {
+		x0, y0 := min(box.X, o.X), min(box.Y, o.Y)
+		x1, y1 := max(box.X+box.W, o.X+o.W), max(box.Y+box.H, o.Y+o.H)
+		box = screen.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
+	}
+	box.X, box.Y = max(box.X, 0), max(box.Y, 0)
+	box.W, box.H = min(box.W, s.Width-box.X), min(box.H, s.Height-box.Y)
+	if box.W*box.H*readListMinArea < s.Width*s.Height {
+		return screen.Rect{}, false
+	}
+	return box, true
 }
 
 func readableList(e screen.Element) bool {
