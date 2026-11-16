@@ -2,6 +2,10 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
+## Unreleased
+
+- 在 iOS 27 以下的 iPhone 上，智能体现在可以按方向键（以及 Page Up / Page Down），比如在输入框里移动光标、在「照片」里翻图。以前这些键会报不支持。
+
 ## 2026.1116.2 (2026-11-16)
 
 - iPhone 上的滑动现在大约只滚动滑过的距离，不会再一下甩过好几屏，智能体也就不会跳过中间的行。
