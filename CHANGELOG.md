@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Screenshots and Checkup's "Seeing the screen" now work over USB on foldables and other phones with two screens, such as the vivo X Fold 6, and show the screen in use.
+
 ## 2026.1116.5 (2026-11-16)
 
 - When the phone is unlocked outside Pinky, for example by a script, the agent's next action now goes ahead right away instead of being refused as locked for several seconds.
