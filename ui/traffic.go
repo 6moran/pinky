@@ -330,7 +330,8 @@ func (a *app) trafficSetupRows(c *mg.Context, d gateway.DeviceView, last bool) {
 	a.trafficBlockRows(c, d, st, last && !(android && st.CanRoute))
 	if android && st.CanRoute {
 		route := st.Route
-		if a.toggleRowFor(c, "traffic-route-"+id, locales.TrafficRouteTitle(), locales.TrafficRouteDesc(strconv.Itoa(trafficPortOf(st))), last, &route) {
+		desc := locales.TrafficRouteDesc(strconv.Itoa(trafficPortOf(st))) + " " + locales.TrafficRouteStranded()
+		if a.toggleRowFor(c, "traffic-route-"+id, locales.TrafficRouteTitle(), desc, last, &route) {
 			a.setTrafficRoute(d, route)
 		}
 	}

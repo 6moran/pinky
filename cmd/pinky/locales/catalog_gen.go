@@ -5799,6 +5799,26 @@ func (msgs Messages) TrafficRouteDesc(port string) string {
 	return Catalog.Format(msgs.locale, "trafficRouteDesc", map[string]any{"port": port})
 }
 
+// TrafficRouteStranded says "If the cable comes out or Pinky quits during a task, the phone keeps pointing at Pinky and has no web until it is plu…"
+// in the language the app shows.
+//
+// A warning under Route over the cable during tasks: the phone's proxy
+// stays set to Pinky when the cable is unplugged or Pinky stops mid-task.
+// adb shell settings put global http_proxy :0 is a command: keep it as it
+// is.
+func TrafficRouteStranded() string { return In(i18n.Locale()).TrafficRouteStranded() }
+
+// TrafficRouteStranded says "If the cable comes out or Pinky quits during a task, the phone keeps pointing at Pinky and has no web until it is plu…"
+// in the language of msgs.
+//
+// A warning under Route over the cable during tasks: the phone's proxy
+// stays set to Pinky when the cable is unplugged or Pinky stops mid-task.
+// adb shell settings put global http_proxy :0 is a command: keep it as it
+// is.
+func (msgs Messages) TrafficRouteStranded() string {
+	return Catalog.Format(msgs.locale, "trafficRouteStranded", nil)
+}
+
 // TrafficRouteChangeFailed says "Couldn't change Route over the cable during tasks for {phone}: {error}"
 // in the language the app shows.
 //

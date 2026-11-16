@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/netip"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/DIYgod/pinky/internal/history"
 	"github.com/DIYgod/pinky/internal/policy"
 	"github.com/DIYgod/pinky/internal/secret"
+	"github.com/DIYgod/pinky/internal/tailnet"
 	"github.com/DIYgod/pinky/internal/traffic"
 )
 
@@ -72,13 +74,19 @@ type Options struct {
 	// authority's private key (the macOS keychain); nil keeps it in a file
 	// in DataDir. TrafficTransport sends the requests on, nil directly.
 	// TrafficInterfaces lists this computer's addresses; nil asks the
-	// system.
+	// system. TrafficTailnet reads Tailscale on this computer, to tell a
+	// phone on the tailnet from one behind a carrier's NAT in the same
+	// range; nil takes no phone at a Tailscale address. TrafficDial
+	// replaces the proxy's own dial, and its refusal of this computer's
+	// addresses (tests).
 	TrafficPort       int
 	TrafficSetupPort  int
 	TrafficCA         *traffic.CA
 	TrafficKeys       secret.Store
 	TrafficTransport  http.RoundTripper
 	TrafficInterfaces func() ([]netip.Prefix, error)
+	TrafficTailnet    func(ctx context.Context) (tailnet.Status, error)
+	TrafficDial       func(ctx context.Context, network, addr string) (net.Conn, error)
 
 	Logger *slog.Logger
 }

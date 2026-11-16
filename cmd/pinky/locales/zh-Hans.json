@@ -291,6 +291,7 @@
   "trafficOutsideTasks": "Pinky 的代理只在这台手机的任务期间运行。其他时候以及 Pinky 没有运行时，手机会直接连网。如果手机完全打不开代理配置链接（比如换了网络，或这台电脑在睡眠），它可能连不上网，所以不再需要时请把代理改回「关闭」。",
   "trafficRouteTitle": "任务期间经数据线转发",
   "trafficRouteDesc": "任务开始时，Pinky 会经 USB 数据线把这台手机的代理指向自己（端口 {port}），任务结束后恢复你原来的设置。这样就不必设置 WLAN 代理。",
+  "trafficRouteStranded": "如果任务进行中拔掉数据线或 Pinky 退出，手机的代理会一直指向 Pinky，在重新连接到运行中的 Pinky 之前无法上网。也可以在电脑上运行 adb shell settings put global http_proxy :0 自行清除。",
   "trafficRouteChangeFailed": "无法更改 {phone} 的「任务期间经数据线转发」：{error}",
   "trafficProblemNoAddress": "Pinky 在这台电脑所在的网络上找不到 {phone} 的地址。请把两者连到同一个 Wi-Fi 或 tailnet。",
   "trafficProblemListenFailed": "这台电脑上有其他程序占用了代理端口，Pinky 无法监听。",

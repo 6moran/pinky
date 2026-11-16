@@ -99,6 +99,12 @@ func trafficOptions(t *testing.T, p driver.Provider, dir string) Options {
 		ApprovalTimeout: 3 * time.Second, MaxBlock: 2 * time.Second, SettleMax: 200 * time.Millisecond,
 		PollInterval: 5 * time.Millisecond, DiscoverEvery: 20 * time.Millisecond, NoScreenshots: true,
 		TrafficPort: freePort(t), TrafficSetupPort: freePort(t),
+		// The test's servers are on this computer, which the proxy's own
+		// dial refuses.
+		TrafficDial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, addr)
+		},
 		TrafficInterfaces: func() ([]netip.Prefix, error) {
 			return []netip.Prefix{netip.MustParsePrefix("127.0.0.1/8"), netip.MustParsePrefix("192.168.1.5/24")}, nil
 		},
@@ -555,13 +561,13 @@ func TestTrafficRoute(t *testing.T) {
 		t.Fatalf("saved routes %+v", rs)
 	}
 	// Over the cable the phone's requests come from 127.0.0.1.
-	if id, ok := g.trafficClient(loopback); !ok || id != "pixel" {
+	if id, ok := g.trafficClient(loopback, false); !ok || id != "pixel" {
 		t.Fatalf("loopback is %q %v", id, ok)
 	}
 	mustStatus(t, s.Release(ctx, ReleaseRequest{Outcome: "done"}), StatusSettled)
 	waitUntil(t, "the setting back", func() bool { return rp.now() == "10.0.0.8:3128" })
 	waitUntil(t, "the saved route gone", func() bool { rs, _ := g.store.TrafficRoutes(ctx); return len(rs) == 0 })
-	if _, ok := g.trafficClient(loopback); ok {
+	if _, ok := g.trafficClient(loopback, false); ok {
 		t.Fatal("loopback still taken after the task")
 	}
 
@@ -643,8 +649,11 @@ func TestListenAddr(t *testing.T) {
 		{"10.0.0.7", ""},
 		{"fe80::2", ""},
 		{"fd7a:115c:a1e0::2", ""},
+		// A carrier's NAT uses the range too: not a tailnet peer.
+		{"100.70.0.9", ""},
 	} {
-		got, ok := listenAddr(netip.MustParseAddr(c.phone), locals)
+		peers := map[netip.Addr]bool{netip.MustParseAddr("100.101.2.2"): true}
+		got, ok := listenAddr(netip.MustParseAddr(c.phone), locals, peers)
 		if (c.want == "" && ok) || (c.want != "" && got.String() != c.want) {
 			t.Errorf("listenAddr(%s) = %v %v, want %q", c.phone, got, ok, c.want)
 		}
@@ -664,6 +673,95 @@ func TestStepAt(t *testing.T) {
 	}{{-time.Second, 0}, {500 * time.Millisecond, 1}, {1500 * time.Millisecond, 1}, {3 * time.Second, 3}} {
 		if got, _ := stepAt(steps, t0.Add(c.at)); got != c.want {
 			t.Errorf("stepAt(+%v) = %d, want %d", c.at, got, c.want)
+		}
+	}
+}
+
+// Pinky's own setting is never the one put back: a phone still pointing
+// at Pinky (an earlier route that was never undone) gets the setting
+// noted then, or none.
+func TestTrafficRouteNeverRestoresPinky(t *testing.T) {
+	ctx := context.Background()
+	for _, noted := range []string{"", "10.0.0.8:3128"} {
+		dir := t.TempDir()
+		rp := &routeProvider{addrProvider: &addrProvider{Provider: fake.NewProvider(fake.NewDevice("pixel", "Pixel 9"))}}
+		opt := trafficOptions(t, rp, dir)
+		pinky := "127.0.0.1:" + strconv.Itoa(opt.TrafficPort)
+		rp.setting = pinky
+		if noted != "" {
+			// An earlier route whose undoing failed: the phone was away.
+			st, err := history.Open(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.SaveTrafficRoute(ctx, history.TrafficRoute{DeviceID: "pixel", Prev: noted, Port: opt.TrafficPort}); err != nil {
+				t.Fatal(err)
+			}
+			st.Close()
+			rp.away = true
+		}
+		g, err := New(opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := g.SetTraffic("pixel", true); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.SetTrafficRoute("pixel", true); err != nil {
+			t.Fatal(err)
+		}
+		s, _ := connect(t, g, "Look at requests")
+		waitUntil(t, "the route", func() bool { st, _ := g.TrafficSetup("pixel"); return st.Routed })
+		if rs, _ := g.store.TrafficRoutes(ctx); len(rs) != 1 || rs[0].Prev != noted {
+			t.Fatalf("noted %q: saved routes %+v", noted, rs)
+		}
+		rp.mu.Lock()
+		rp.away = false
+		rp.mu.Unlock()
+		mustStatus(t, s.Release(ctx, ReleaseRequest{Outcome: "done"}), StatusSettled)
+		waitUntil(t, "the setting back", func() bool { return rp.now() == noted })
+		g.Close()
+	}
+}
+
+// Outside its task a phone gets only the setup files: the proxy takes
+// only a phone whose task runs.
+func TestTrafficProxyOnlyDuringTheTask(t *testing.T) {
+	ctx := context.Background()
+	g, np := newTrafficGateway(t)
+	np.setAddrs(loopback)
+	if err := g.SetTraffic("pixel", true); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, "the setup listener", func() bool { st, _ := g.TrafficSetup("pixel"); return st.PACURL != "" })
+	if _, ok := g.trafficClient(loopback, true); !ok {
+		t.Fatal("the setup files are not served to the phone")
+	}
+	if _, ok := g.trafficClient(loopback, false); ok {
+		t.Fatal("the proxy takes a phone outside its task")
+	}
+	s, _ := connect(t, g, "Look at requests")
+	waitUntil(t, "the proxy", func() bool { _, ok := g.trafficClient(loopback, false); return ok })
+	mustStatus(t, s.Release(ctx, ReleaseRequest{Outcome: "done"}), StatusSettled)
+	waitUntil(t, "the proxy to stop taking it", func() bool { _, ok := g.trafficClient(loopback, false); return !ok })
+}
+
+// The path filter matches what the agent sees: redacted values cannot be
+// guessed a letter at a time.
+func TestTrafficPathFilterIsRedacted(t *testing.T) {
+	now := time.Now()
+	reqs := []traffic.Request{{ID: "1", Device: "pixel", Start: now, End: now, Method: "GET", Host: "api.example", Decrypted: true,
+		URL: "https://api.example/v1/me?access_token=abc123&page=2"}}
+	for path, want := range map[string]bool{
+		"access_token=a":          false,
+		"abc":                     false,
+		"access_token=[redacted]": true,
+		"page=2":                  true,
+		"/v1/me":                  true,
+	} {
+		res := trafficList(reqs, TrafficRequest{Path: path}, 50, nil, now.Add(-time.Minute), now, 0)
+		if got := strings.Contains(res.Log, "api.example"); got != want {
+			t.Errorf("path %q matched %v: %+v", path, got, res)
 		}
 	}
 }

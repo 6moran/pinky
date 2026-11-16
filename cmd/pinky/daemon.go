@@ -22,6 +22,7 @@ import (
 	"github.com/DIYgod/pinky/internal/mcp"
 	"github.com/DIYgod/pinky/internal/policy"
 	"github.com/DIYgod/pinky/internal/secret"
+	"github.com/DIYgod/pinky/internal/tailnet"
 	"github.com/DIYgod/pinky/internal/telemetry"
 	"github.com/DIYgod/pinky/internal/update"
 	"github.com/DIYgod/pinky/internal/webmirror"
@@ -211,6 +212,7 @@ func startGateway(c gatewayConfig) (*runningGateway, error) {
 		TrustNewAgents: c.Fake,
 		PIN:            c.PIN,
 		TrafficKeys:    trafficKeys(c.Fake),
+		TrafficTailnet: trafficTailnet(c.Fake),
 	})
 	if err != nil {
 		ln.Close()
@@ -251,6 +253,16 @@ func (r *runningGateway) Close() {
 // trafficKeys is where Pinky keeps its traffic certificate's private key:
 // the keychain on macOS; elsewhere, and for fake phones, a file in the
 // data folder that only this user reads (docs/notes/traffic-capture.md).
+// trafficTailnet reads Tailscale on this computer, so the traffic proxy
+// takes a phone at a Tailscale address only when it is a peer; fake
+// phones have none.
+func trafficTailnet(fake bool) func(context.Context) (tailnet.Status, error) {
+	if fake {
+		return nil
+	}
+	return tailnet.Read
+}
+
 func trafficKeys(fake bool) secret.Store {
 	if fake || runtime.GOOS != "darwin" || !secret.Supported(secret.System()) {
 		return nil

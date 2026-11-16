@@ -388,14 +388,17 @@ func stepAt(steps []StepView, t time.Time) (int, string) {
 	return idx, text
 }
 
-// trafficPath returns a request's path and query, for the path filter.
+// trafficPath returns a request's path and query as the agent sees them,
+// redacted, for the path filter: matching the real values would let an
+// agent guess a redacted token a letter at a time.
 func trafficPath(r traffic.Request) string {
 	if !r.Decrypted {
 		return ""
 	}
-	u, err := url.Parse(r.URL)
+	red := traffic.RedactURL(r.URL)
+	u, err := url.Parse(red)
 	if err != nil {
-		return r.URL
+		return red
 	}
 	return u.RequestURI()
 }

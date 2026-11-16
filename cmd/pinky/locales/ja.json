@@ -291,6 +291,7 @@
   "trafficOutsideTasks": "Pinky のプロキシは、このスマホのタスク中だけ動きます。それ以外のときや Pinky が動いていないときは、スマホは直接つながります。スマホがプロキシ設定のリンクにまったくアクセスできないとき（別のネットワークにいる、このパソコンがスリープ中など）はつながらないことがあるため、不要になったらプロキシを「オフ」に戻してください。",
   "trafficRouteTitle": "タスク中はケーブル経由にする",
   "trafficRouteDesc": "タスクが始まると、Pinky は USB ケーブル経由でこのスマホのプロキシを自分に向け（ポート {port}）、終わると元の設定に戻します。Wi-Fi のプロキシ設定は不要になります。",
+  "trafficRouteStranded": "タスク中にケーブルを抜いたり Pinky が終了したりすると、スマホのプロキシは Pinky を向いたままになり、動いている Pinky に再びつなぐまでネットに接続できません。自分で解除するには、パソコンで adb shell settings put global http_proxy :0 を実行します。",
   "trafficRouteChangeFailed": "{phone} の「タスク中はケーブル経由にする」を変更できませんでした：{error}",
   "trafficProblemNoAddress": "このパソコンのネットワーク上に {phone} のアドレスが見つかりません。両方を同じ Wi-Fi か tailnet につないでください。",
   "trafficProblemListenFailed": "このパソコンの別のプログラムがプロキシのポートを使っているため、Pinky は待ち受けできません。",

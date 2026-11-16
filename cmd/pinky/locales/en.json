@@ -2032,6 +2032,10 @@
       }
     }
   },
+  "trafficRouteStranded": "If the cable comes out or Pinky quits during a task, the phone keeps pointing at Pinky and has no web until it is plugged into a running Pinky again. To clear it yourself, run adb shell settings put global http_proxy :0 on a computer.",
+  "@trafficRouteStranded": {
+    "description": "A warning under Route over the cable during tasks: the phone's proxy stays set to Pinky when the cable is unplugged or Pinky stops mid-task. adb shell settings put global http_proxy :0 is a command: keep it as it is."
+  },
   "trafficRouteChangeFailed": "Couldn't change Route over the cable during tasks for {phone}: {error}",
   "@trafficRouteChangeFailed": {
     "description": "A toast when Pinky could not turn the cable route on or off. phone is the phone's name, error what went wrong.",

@@ -80,7 +80,8 @@ type captureState struct {
 	ca      *traffic.CA
 	proxy   *traffic.Proxy
 	caErr   error
-	clients map[netip.Addr]string // the phones' addresses, to their ids
+	clients map[netip.Addr]string // the switched-on phones' addresses, to their ids: for the setup files
+	tasks   map[netip.Addr]string // those of the phones whose task runs: for the proxy
 	routed  string                // the phone that reaches the proxy over adb reverse, at 127.0.0.1
 	listen  map[string][]string   // by phone: the proxy's addresses it uses during tasks
 	setupAt map[string][]string   // by phone: the setup listeners' addresses
@@ -109,6 +110,7 @@ func (g *Gateway) initCapture() {
 	g.cap.store = traffic.NewStore(0, 0)
 	g.cap.kick = make(chan struct{}, 1)
 	g.cap.clients = map[netip.Addr]string{}
+	g.cap.tasks = map[netip.Addr]string{}
 	g.cap.listen = map[string][]string{}
 	g.cap.setupAt = map[string][]string{}
 	g.cap.problem = map[string]string{}
@@ -201,7 +203,7 @@ func (g *Gateway) proxyLocked() (*traffic.Proxy, error) {
 		c.ca, c.caErr = ca, nil
 	}
 	c.proxy = &traffic.Proxy{CA: c.ca, Store: c.store, Client: g.trafficClient, Record: g.recordTraffic,
-		Blocked: g.trafficBlocked, Transport: g.opt.TrafficTransport, Log: g.log}
+		Blocked: g.trafficBlocked, Transport: g.opt.TrafficTransport, Dial: g.opt.TrafficDial, Log: g.log}
 	return c.proxy, nil
 }
 
@@ -214,12 +216,17 @@ func (g *Gateway) trafficBlocked(id, host string) bool {
 	return traffic.Blocked(host, extra)
 }
 
-// trafficClient is the proxy's Client: the phone at addr, if a phone
-// being captured is there.
-func (g *Gateway) trafficClient(addr netip.Addr) (string, bool) {
+// trafficClient is the proxy's Client: the phone at addr. The setup
+// files go to any phone whose switch is on; the proxy takes only a phone
+// whose task runs, and at 127.0.0.1 the one routed over its cable.
+func (g *Gateway) trafficClient(addr netip.Addr, setup bool) (string, bool) {
 	g.cap.mu.Lock()
 	defer g.cap.mu.Unlock()
-	if id, ok := g.cap.clients[addr]; ok {
+	if setup {
+		id, ok := g.cap.clients[addr]
+		return id, ok
+	}
+	if id, ok := g.cap.tasks[addr]; ok {
 		return id, true
 	}
 	if addr.IsLoopback() && g.cap.routed != "" {
@@ -312,6 +319,7 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 			p.Close()
 		}
 		clear(g.cap.clients)
+		clear(g.cap.tasks)
 		clear(g.cap.listen)
 		clear(g.cap.setupAt)
 		clear(g.cap.problem)
@@ -338,13 +346,15 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 		g.log.Warn("traffic: this computer's addresses", "err", err)
 	}
 	clients := map[netip.Addr]string{}
+	tasks := map[netip.Addr]string{}
 	listen := map[string][]string{}
+	peers := g.tailnetPeers(ctx, locals)
 	setupAt := map[string][]string{}
 	problem := map[string]string{}
 	keep := map[string]bool{}
 	for _, w := range want {
 		for _, a := range g.phoneAddrs(ctx, w) {
-			ip, ok := listenAddr(a, locals)
+			ip, ok := listenAddr(a, locals, peers)
 			if !ok {
 				continue
 			}
@@ -368,6 +378,7 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 				problem[w.id] = TrafficListenFailed
 				continue
 			}
+			tasks[a] = w.id
 			keep[at] = true
 			if !slices.Contains(listen[w.id], at) {
 				listen[w.id] = append(listen[w.id], at)
@@ -390,7 +401,7 @@ func (g *Gateway) syncCapture(ctx context.Context) {
 		}
 	}
 	g.cap.mu.Lock()
-	g.cap.clients, g.cap.listen, g.cap.setupAt, g.cap.problem = clients, listen, setupAt, problem
+	g.cap.clients, g.cap.tasks, g.cap.listen, g.cap.setupAt, g.cap.problem = clients, tasks, listen, setupAt, problem
 	g.cap.mu.Unlock()
 }
 
@@ -443,6 +454,7 @@ func (g *Gateway) route(ctx context.Context, p *traffic.Proxy, w captureWant, po
 		g.log.Warn("traffic: read the phone's proxy", "device", w.id, "err", err)
 		return TrafficRouteFailed
 	}
+	prev = g.settingToRestore(w.id, prev)
 	r := history.TrafficRoute{DeviceID: w.id, Prev: prev, Port: port}
 	// Noted before the phone changes, so that a crash in between still
 	// puts it back.
@@ -463,6 +475,36 @@ func (g *Gateway) route(ctx context.Context, p *traffic.Proxy, w captureWant, po
 	g.cap.routed = w.id
 	g.cap.mu.Unlock()
 	return ""
+}
+
+// settingToRestore is the proxy setting to put back on a phone that has
+// cur now. When cur is Pinky's own (an earlier route was never undone:
+// the cable came out, or Pinky crashed, and putting it back failed), the
+// setting noted then is the one, and that note now belongs to the new
+// route; without one, no proxy. Pinky's own is never the one to put
+// back.
+func (g *Gateway) settingToRestore(id, cur string) string {
+	g.cap.mu.Lock()
+	defer g.cap.mu.Unlock()
+	noted := ""
+	if i := slices.IndexFunc(g.cap.pending, func(r history.TrafficRoute) bool { return r.DeviceID == id }); i >= 0 {
+		noted = g.cap.pending[i].Prev
+		g.cap.pending = slices.Delete(slices.Clone(g.cap.pending), i, i+1)
+	}
+	switch {
+	case !pinkySetting(cur):
+		return cur
+	case !pinkySetting(noted):
+		return noted
+	}
+	return ""
+}
+
+// pinkySetting reports whether an Android proxy setting points at Pinky
+// over the phone's cable (127.0.0.1 or localhost, any port).
+func pinkySetting(s string) bool {
+	host, _, err := net.SplitHostPort(s)
+	return err == nil && (host == "127.0.0.1" || host == "localhost" || host == "::1")
 }
 
 // unroute puts a phone's proxy setting back. When the phone cannot be
@@ -560,13 +602,37 @@ func (g *Gateway) localPrefixes() ([]netip.Prefix, error) {
 }
 
 // Tailscale's ranges: a computer's own Tailscale address is a /32 (or
-// /128), so a phone on the tailnet is matched by the range.
+// /128), so a phone on the tailnet is matched by the range. Carriers use
+// 100.64.0.0/10 too (CGNAT), so an address there counts as the tailnet's
+// only when Tailscale lists it as a peer.
 var tailnets = []netip.Prefix{netip.MustParsePrefix("100.64.0.0/10"), netip.MustParsePrefix("fd7a:115c:a1e0::/48")}
 
+// tailnetPeers returns the addresses of this computer's Tailscale peers,
+// read only when this computer has a Tailscale address; nil without
+// Options.TrafficTailnet.
+func (g *Gateway) tailnetPeers(ctx context.Context, locals []netip.Prefix) map[netip.Addr]bool {
+	if g.opt.TrafficTailnet == nil || !slices.ContainsFunc(locals, func(l netip.Prefix) bool {
+		return slices.ContainsFunc(tailnets, func(t netip.Prefix) bool { return t.Contains(l.Addr()) })
+	}) {
+		return nil
+	}
+	st, err := g.opt.TrafficTailnet(ctx)
+	if err != nil || !st.Running() {
+		return nil
+	}
+	peers := map[netip.Addr]bool{}
+	for _, d := range st.Peers {
+		for _, a := range d.Addrs {
+			peers[a.Unmap()] = true
+		}
+	}
+	return peers
+}
+
 // listenAddr picks this computer's address on the network a phone at a is
-// on: the one whose network holds a, or for a phone on Tailscale this
-// computer's Tailscale address. Never a link-local address.
-func listenAddr(a netip.Addr, locals []netip.Prefix) (netip.Addr, bool) {
+// on: the one whose network holds a, or for a phone on Tailscale (one of
+// peers) this computer's Tailscale address. Never a link-local address.
+func listenAddr(a netip.Addr, locals []netip.Prefix, peers map[netip.Addr]bool) (netip.Addr, bool) {
 	a = a.Unmap()
 	if a.IsLinkLocalUnicast() || a.IsUnspecified() {
 		return netip.Addr{}, false
@@ -574,6 +640,9 @@ func listenAddr(a netip.Addr, locals []netip.Prefix) (netip.Addr, bool) {
 	for _, t := range tailnets {
 		if !t.Contains(a) {
 			continue
+		}
+		if !peers[a] {
+			return netip.Addr{}, false
 		}
 		for _, l := range locals {
 			if t.Contains(l.Addr()) && l.Addr().Is4() == a.Is4() {
