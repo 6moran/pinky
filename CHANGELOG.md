@@ -2,6 +2,12 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- You can now choose where task recordings are saved, in Settings › Privacy › Recordings folder, for example on an external disk. New recordings go there; earlier ones stay where they are and still play. Use Pinky's folder switches back.
+- While the chosen folder is missing (a disk that isn't plugged in) or can't be written, recordings go to Pinky's own folder, and Settings says when the folder is missing. Pinky won't take a folder inside its own recordings folder, even through a link, and says why.
+- Recordings of tasks you delete are removed from the chosen folder too, also when the disk was unplugged or read-only at the time: Pinky removes them once it can. Delete all activity removes only Pinky's recordings there, never your other files.
+
 ## 2026.1116.8 (2026-11-16)
 
 - Agents with read-only access can now type into search boxes that don't say they are one, such as Pinduoduo's.
