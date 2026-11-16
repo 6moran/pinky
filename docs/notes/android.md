@@ -671,3 +671,18 @@ After run 1 a failure right after a restart no longer holds the phone back for f
 - In ui: `TestCheckupHostWords` (the words, the step on the connection item, a Detail without a port) and `TestAddAndroidOtherServer` (Add phone, in Chinese).
 
 The command lines were compared with this Mac's `ps`, where a start-server server ran on 5047 (`adb -L tcp:5047 fork-server server --reply-fd 4`) beside the SDK's on 5037. No real phone was used, and no second server was started.
+
+## Screenshots on phones with two screens (GitHub issue #154, 2026-11-16)
+
+On a vivo X Fold 6 over USB, Checkup's "Seeing the screen" failed while taps and swipes worked. `screencap -p` without `-d` on a phone with more than one physical display prints AOSP's "[Warning] Multiple displays were found, but no display id was specified!" (on stderr, which the `exec:` service sends along with stdout) before the PNG, and then captures the first display it finds, which on a foldable can be the screen folded away, black.
+
+`capture.go` now:
+
+- Cuts any text before the PNG signature off screencap's output; output with no PNG is still an error.
+- Runs plain `screencap -p` until the warning shows (or a capture fails). Phones with one display make no other adb call.
+- On the warning, runs `screenDisplayCmd` (`dumpsys SurfaceFlinger --display-id` and the lines of `dumpsys display` about display 0) and picks the physical display that display 0 shows on: the SurfaceFlinger display whose id is in display 0's unique id (`local:<id>` on AOSP), or else the one on the same port (`address {port=N}` in the DisplayInfo, `physicalPort=N` in the viewport). The vivo names its displays `local:primary` and `local:secondary`, so only the port matches there (the inner screen is port 3). From then on it runs `screencap -p -d <id>`.
+- Looks again, at most every 3 s, when a capture fails or comes out all black, as the old screen does after folding or unfolding. The black check decodes only PNGs much smaller than a screen with anything on it compresses to.
+
+`Background.Screenshot` (virtual displays) also cuts text before the PNG. `background.go` passes the logical id of its virtual display to `screencap -d`, which wants a physical one; that was already unsupported and stays so.
+
+Tests (fake adb server, captured-style fixtures): `TestCutPNG`, `TestScreenDisplay` (vivo folded and unfolded, a Pixel Fold, the Android 10 layout, viewports only), `TestBlankPNG`, `TestScreencapOneDisplay`, `TestScreencapFoldable` (the warning, the lookup, then folding), `TestScreencapUnknownDisplay`. The dumpsys samples are written from AOSP's formats and the issue, not captured from a foldable: no foldable was at hand and no real phone was used.
