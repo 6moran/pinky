@@ -233,13 +233,24 @@ func (s *Store) dropMedia(ctx context.Context, tx *sql.Tx, candidates map[string
 }
 
 // removeFiles removes files whose rows are gone; one already gone is fine.
+// It tries every file, so one that cannot be removed leaves no other
+// behind, and returns all that failed.
 func removeFiles(files []string) error {
+	_, err := removeEach(files)
+	return err
+}
+
+// removeEach removes files, trying every one, and returns those it could
+// not remove, with their errors. One already gone is fine.
+func removeEach(files []string) (failed []string, err error) {
+	var errs []error
 	for _, f := range files {
 		if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+			failed = append(failed, f)
+			errs = append(errs, err)
 		}
 	}
-	return nil
+	return failed, errors.Join(errs...)
 }
 
 func (s *Store) strings(ctx context.Context, q string, args ...any) ([]string, error) {
