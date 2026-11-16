@@ -504,7 +504,7 @@ The result's message says what it holds ("120 log lines of Example since 14:05:0
 
 ### phone_traffic
 
-Lists the HTTP and HTTPS requests the phone made during the task, so an agent can see which API an app calls. Needs a `phone_connect` lease; it changes nothing (annotated read-only). It works only when the person turned on Read network traffic for the phone in Settings › Phones and the phone sends its traffic through Pinky's own proxy (its Wi-Fi proxy set to it, or on Android the cable route the person turned on). Design and safety decisions: [notes/traffic-capture.md](notes/traffic-capture.md).
+Lists the HTTP and HTTPS requests the phone made during the task, so an agent can see which API an app calls. Needs a `phone_connect` lease; it changes nothing (annotated read-only). It works only when the person turned on Read network traffic for the phone in Settings › Phones and the phone sends its traffic through Pinky's own proxy (its Wi-Fi proxy set to Automatic with Pinky's proxy setup link, or on Android the cable route the person turned on). Design and safety decisions: [notes/traffic-capture.md](notes/traffic-capture.md).
 
 | Argument | Type | Meaning |
 | --- | --- | --- |
@@ -519,11 +519,12 @@ Lists the HTTP and HTTPS requests the phone made during the task, so an agent ca
 | `intent` | string | One sentence on why, shown on the approval panel |
 | `approval_id` | string | From `approval_pending`: repeat the same call with it |
 
-- **Lines**, oldest first: `#104 14:05:31.204 step 7 POST 200 https://api.example.com/v2/cart · ↑1.2 KB ↓8.4 KB`, the id, the time on the computer's clock, the task's step that ran when the request started (a hint: apps also call on their own), the method, the status, the URL (cut at 300 characters) and the bytes sent and received, then `failed`, `running` or `not decrypted` when they apply. HTTPS Pinky could not decrypt, as for apps that pin their certificate or a phone that does not trust Pinky's, shows only `https://host:port`. Results are at most 64 KB.
+- **Lines**, oldest first: `#104 14:05:31.204 step 7 POST 200 https://api.example.com/v2/cart · ↑1.2 KB ↓8.4 KB`, the id, the time on the computer's clock, the task's step that ran when the request started (a hint: apps also call on their own), the method, the status, the URL (cut at 300 characters) and the bytes sent and received, then `failed`, `running`, `not decrypted` or `not decrypted (blocked)` when they apply. HTTPS Pinky could not decrypt, as for apps that pin their certificate or a phone that does not trust Pinky's, shows only `https://host:port`. Results are at most 64 KB.
+- **Blocked hosts.** Pinky never decrypts banking, payment, brokerage and password-manager services (a built-in list of domains, matched with their subdomains) or the hosts the person adds for the phone under Never decrypt: their connections pass through untouched and show only as `https://host`, marked `not decrypted (blocked)`, with no headers, sizes or bodies.
 - **The phone, not the app.** The proxy takes the phone's connections, so every app that uses the system proxy shows up. Nothing is recorded while the person holds the phone (a takeover or a handoff), and the requests are dropped when the task ends.
 - **Redacted.** `Authorization`, `Cookie`, `Set-Cookie` and headers, query parameters and JSON or form keys named like secrets (token, password, session, key, code, …), and bearer tokens and JWTs anywhere, show as `[redacted]`. Binary bodies are left out.
 - **Statuses.** The switch off: `blocked_by_policy`, rule `Network traffic`. Pinky's proxy takes nothing from the phone (no address on this computer's networks, its port taken, the cable route failed): `unsupported`, before anyone is asked. Watch-only agents: `scope_denied`.
-- **Asking.** The first read in a task asks the person (rule `Network traffic`, "Read the network traffic of Pixel 9?"): up to 45 s, then `approval_pending`. "Allow for this task" covers the rest of the task; there is no "Always allow".
+- **Asking.** The first read in a task asks the person (rule `Network traffic`, "Read the network traffic of Pixel 9?"): up to 45 s, then `approval_pending`. The first call with `bodies` asks once more ("Read the request and response bodies in the network traffic of Pixel 9?"), or, when it is the task's first read, asks once for both ("Read the network traffic of Pixel 9 with request and response bodies?"). "Allow for this task" covers the rest of the task; "Allow once" only that call; there is no "Always allow".
 - Each call is a step in the task's history, without the requests: "Read 12 network requests of Pixel 9", "Read network request 104 of Pixel 9".
 
 ### phone_device
