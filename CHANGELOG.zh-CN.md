@@ -2,7 +2,7 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## Unreleased
+## 2026.1116.6 (2026-11-16)
 
 - 在 vivo X Fold 6 等折叠屏或双屏手机上，USB 连接时截图和「体检」里的「查看屏幕」现在可以正常使用，截到的是正在使用的那块屏幕。
 
