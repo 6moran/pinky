@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/netip"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"github.com/DIYgod/pinky/internal/driver"
 	"github.com/DIYgod/pinky/internal/history"
 	"github.com/DIYgod/pinky/internal/policy"
+	"github.com/DIYgod/pinky/internal/traffic"
 )
 
 // Options configure a Gateway. Zero durations take the defaults in
@@ -59,6 +62,17 @@ type Options struct {
 	// it through driver.Unlocker and forgets it. Nil means unlocking from
 	// the computer is not available.
 	PIN func(ctx context.Context, deviceID string) (string, error)
+
+	// Pinky's traffic capture (capture.go). TrafficPort is the proxy's
+	// port, default TrafficPort. TrafficCA is its certificate authority;
+	// nil loads (or makes) the one in DataDir, or one in memory without
+	// DataDir. TrafficTransport sends the requests on, nil directly.
+	// TrafficInterfaces lists this computer's addresses; nil asks the
+	// system.
+	TrafficPort       int
+	TrafficCA         *traffic.CA
+	TrafficTransport  http.RoundTripper
+	TrafficInterfaces func() ([]netip.Prefix, error)
 
 	Logger *slog.Logger
 }
@@ -132,7 +146,14 @@ type Gateway struct {
 	started    map[string]bool           // virtual phones started with StartVirtual in this run, by platform and VirtualID (virtual.go)
 	wifiOn     bool                      // the providers use phones over Wi-Fi (SetWiFi)
 	keepDays   int                       // history retention; 0 keeps everything
-	prune      chan struct{}             // asks the retention loop to run now
+	// trafficOn lists the phones whose network traffic agents may read
+	// (traffic.go), trafficRoute the Android phones Pinky routes through
+	// itself during tasks (capture.go).
+	trafficOn    map[string]bool
+	trafficRoute map[string]bool
+	prune        chan struct{} // asks the retention loop to run now
+
+	cap captureState // Pinky's traffic proxy (capture.go)
 
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -152,23 +173,25 @@ var _ API = (*Gateway)(nil)
 func New(o Options) (*Gateway, error) {
 	o.defaults()
 	g := &Gateway{
-		opt:        o,
-		log:        o.Logger,
-		policy:     o.Policy,
-		devices:    map[string]*device{},
-		sessions:   map[string]*Session{},
-		agents:     map[string]*agentState{},
-		apSteps:    map[string]stepRef{},
-		subs:       map[chan Event]struct{}{},
-		hubs:       map[string]*hub{},
-		background: map[string]bool{},
-		removed:    map[string]bool{},
-		paused:     map[string]bool{},
-		known:      map[string]bool{},
-		names:      map[string]history.Device{},
-		chosen:     map[string]string{},
-		started:    map[string]bool{},
-		prune:      make(chan struct{}, 1),
+		opt:          o,
+		log:          o.Logger,
+		policy:       o.Policy,
+		devices:      map[string]*device{},
+		sessions:     map[string]*Session{},
+		agents:       map[string]*agentState{},
+		apSteps:      map[string]stepRef{},
+		subs:         map[chan Event]struct{}{},
+		hubs:         map[string]*hub{},
+		background:   map[string]bool{},
+		removed:      map[string]bool{},
+		paused:       map[string]bool{},
+		known:        map[string]bool{},
+		names:        map[string]history.Device{},
+		chosen:       map[string]string{},
+		started:      map[string]bool{},
+		prune:        make(chan struct{}, 1),
+		trafficOn:    map[string]bool{},
+		trafficRoute: map[string]bool{},
 	}
 	if g.policy == nil {
 		g.policy = policy.Default()
@@ -183,6 +206,11 @@ func New(o Options) (*Gateway, error) {
 			g.background = bg
 		} else {
 			g.log.Warn("history: background displays", "err", err)
+		}
+		if on, route, err := st.TrafficDevices(context.Background()); err == nil {
+			g.trafficOn, g.trafficRoute = on, route
+		} else {
+			g.log.Warn("history: network traffic", "err", err)
 		}
 		// How the person chose to connect each phone, before the first
 		// discovery opens it.
@@ -201,13 +229,15 @@ func New(o Options) (*Gateway, error) {
 		OnExpire: g.approvalExpired,
 	})
 	g.rec = newRecorder(g.log)
+	g.initCapture()
 	g.ctx, g.cancel = context.WithCancel(context.Background())
 
 	ctx, cancel := context.WithTimeout(g.ctx, 10*time.Second)
 	g.discover(ctx)
 	cancel()
 
-	g.wg.Add(4)
+	g.wg.Add(5)
+	go g.captureLoop()
 	go g.discoverLoop()
 	go g.idleLoop()
 	go g.retentionLoop()
@@ -234,6 +264,9 @@ func (g *Gateway) Close() error {
 	g.mu.Lock()
 	g.endKeptLocked("gateway stopped", false)
 	g.mu.Unlock()
+	// The proxy stops and the phones' proxy settings go back, while the
+	// providers still reach the phones.
+	g.stopCapture()
 	g.approvals.Close()
 	g.cancel()
 	// Recordings close their files, which needs the history queue.

@@ -64,12 +64,13 @@ var (
 	reStopApp     = re(`^[Ss]top “(.*?)”(?: on (.+))?$`)
 	reInstallFrom = re(`^install from (“.*)$`)
 
-	reReadLogs = re(`^[Rr]ead the logs of (.+)$`)
+	reReadLogs    = re(`^[Rr]ead the logs of (.+)$`)
+	reReadTraffic = re(`^[Rr]ead the network traffic of (.+)$`)
 )
 
 // action is a parsed action, which says itself as done or as asked.
 type action struct {
-	verb                 string // tap, longpress, type, swipe, swipefrom, zoomin, zoomout, turn, drag, dragfrom, press, open, openlink, openin, openregion, set, stoplocation, copy, copymany, list, copyfrom, copyto, receive, install, update, uninstall, stop, installfrom, readlogs
+	verb                 string // tap, longpress, type, swipe, swipefrom, zoomin, zoomout, turn, drag, dragfrom, press, open, openlink, openin, openregion, set, stoplocation, copy, copymany, list, copyfrom, copyto, receive, install, update, uninstall, stop, installfrom, readlogs, readtraffic
 	label, text, x, y    string
 	x2, y2, dir, key     string
 	app, files, phone    string
@@ -204,6 +205,9 @@ func parseAsked(s string) (action, bool) {
 	}
 	if m := reReadLogs.FindStringSubmatch(s); m != nil {
 		return action{verb: "readlogs", app: m[1]}, true
+	}
+	if m := reReadTraffic.FindStringSubmatch(s); m != nil {
+		return action{verb: "readtraffic", phone: m[1]}, true
 	}
 	switch {
 	case reListFolder.MatchString(s):
@@ -411,6 +415,8 @@ func (a action) ask() string {
 		return locales.GwDoInstallFrom(appFiles(a.files))
 	case "readlogs":
 		return locales.GwDoReadLogs(a.app)
+	case "readtraffic":
+		return locales.GwDoReadTraffic(a.phone)
 	}
 	return ""
 }
@@ -528,6 +534,8 @@ var (
 	reGiveVids  = re(`^[Gg]ive (.+) the screen recordings of (\d+) tasks$`)
 	reLogLines  = re(`^Read (\d+) log lines? of (.+)$`)
 	reCrashes   = re(`^Read (\d+) crash reports? of (.+)$`)
+	reTraffic   = re(`^Read (\d+) network requests? of (.+)$`)
+	reTraffic1  = re(`^Read network request (\S+) of (.+)$`)
 	reYouDid    = re(`^You (allowed|denied): (.*)$`)
 	reYourNote  = re(`^Your note: (.*)$`)
 	reAlways    = re(`^Always allowed: “(.*?)” in (.+)$`)
@@ -664,6 +672,12 @@ func stepText(s string) string {
 	if m := reCrashes.FindStringSubmatch(s); m != nil {
 		return locales.GwStepReadCrashes(m[1], m[2])
 	}
+	if m := reTraffic.FindStringSubmatch(s); m != nil {
+		return locales.GwStepReadTraffic(m[1], m[2])
+	}
+	if m := reTraffic1.FindStringSubmatch(s); m != nil {
+		return locales.GwStepReadTrafficOne(m[1], m[2])
+	}
 	if m := reYouDid.FindStringSubmatch(s); m != nil {
 		if m[1] == "allowed" {
 			return locales.GwStepYouAllowed(asked(m[2]))
@@ -754,7 +768,7 @@ var (
 	reTapTitle    = re(`^(Tap|Long-press|Type into|Swipe|Drag) “(.*)”\?$`)
 	rePressTitle  = re(`^Press (\S+) in “(.*)”\?$`)
 	reAgentTitle  = re(`^Let (.+) use your phones\?$`)
-	reAskedTitle  = re(`^((?:Copy|Install|Update|Uninstall|Stop) .+|Read the logs of .+)\?$`)
+	reAskedTitle  = re(`^((?:Copy|Install|Update|Uninstall|Stop) .+|Read the logs of .+|Read the network traffic of .+)\?$`)
 	reQuestion    = re(`^(.+)\?$`)
 )
 

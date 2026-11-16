@@ -117,6 +117,11 @@ type device struct {
 	// clears locked only when nothing else recorded a state meanwhile
 	// (unlockedNow).
 	lockSeq uint64
+	// quietWhy says why the person holds the phone now (quietPerson,
+	// quietHandoff), and quiet lists when they held it lately: phone_traffic
+	// never returns requests made then (traffic.go).
+	quietWhy uint8
+	quiet    []span
 	// personAt is when the person last used the phone's own screen while
 	// an agent worked on a background display (which does not pause it).
 	personAt time.Time
@@ -275,6 +280,9 @@ type lease struct {
 	// logsRead is set once the agent read an app's logs: the driver may
 	// listen to the phone until the task ends (driver.LogListener).
 	logsRead bool
+	// trafficGranted is set when the person allowed the agent to read the
+	// phone's network traffic for the rest of the task (traffic.go).
+	trafficGranted bool
 	// settingsGranted is set when the person allowed changing the phone's
 	// settings for the rest of the task (switches.go).
 	settingsGranted bool
