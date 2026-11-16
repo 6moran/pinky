@@ -32,6 +32,11 @@ type testProxy struct {
 
 func newTestProxy(t *testing.T, upstream *httptest.Server) *testProxy {
 	t.Helper()
+	return newTestProxyWith(t, upstream, limits{})
+}
+
+func newTestProxyWith(t *testing.T, upstream *httptest.Server, lim limits) *testProxy {
+	t.Helper()
 	ca, err := NewCA()
 	if err != nil {
 		t.Fatal(err)
@@ -55,14 +60,18 @@ func newTestProxy(t *testing.T, upstream *httptest.Server) *testProxy {
 		tr = &http.Transport{DialContext: dial, TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: "example.com"}, DisableCompression: true}
 	}
 	tp.Proxy = &Proxy{CA: ca, Store: tp.store, Transport: tr,
-		Client: func(a netip.Addr) (string, bool) { return "pixel", a == *tp.allow.Load() },
+		Client: func(a netip.Addr, _ bool) (string, bool) { return "pixel", a == *tp.allow.Load() },
 		Record: func(string) bool { return !tp.quiet.Load() },
+		limits: lim,
 	}
-	if upstream != nil {
-		tp.Proxy.Dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, network, up)
+	// The test's servers are on this computer, which the proxy's own dial
+	// refuses (TestProxyRefusesThisComputer).
+	tp.Proxy.Dial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if up != "" {
+			addr = up
 		}
+		var d net.Dialer
+		return d.DialContext(ctx, network, addr)
 	}
 	addr, err := tp.Listen("127.0.0.1:0")
 	if err != nil {
@@ -213,17 +222,17 @@ func TestProxyPassesPinnedHostsThrough(t *testing.T) {
 	pool := x509.NewCertPool()
 	pool.AddCert(upstream.Certificate())
 	c := tp.phone(pool, "example.com")
-	if _, err := c.Get("https://bank.example.test/"); err == nil {
+	if _, err := c.Get("https://example.com/"); err == nil {
 		t.Fatal("the app accepted Pinky's certificate though it trusts only the server's")
 	}
 	waitFor(t, "the refused handshake", func() bool { return len(tp.store.Requests(Query{Device: "pixel"})) == 1 })
 	r := tp.store.Requests(Query{Device: "pixel"})[0]
-	if r.Decrypted || !r.Failed || r.Method != "CONNECT" || r.URL != "https://bank.example.test:443" || !strings.Contains(r.Note, "refused") {
+	if r.Decrypted || !r.Failed || r.Method != "CONNECT" || r.URL != "https://example.com:443" || !strings.Contains(r.Note, "refused") {
 		t.Fatalf("refused handshake: %+v", r)
 	}
 	// The next connection to the host goes through untouched, so the app
 	// works.
-	resp, err := c.Get("https://bank.example.test/")
+	resp, err := c.Get("https://example.com/")
 	if err != nil {
 		t.Fatalf("passed through: %v", err)
 	}
@@ -237,7 +246,7 @@ func TestProxyPassesPinnedHostsThrough(t *testing.T) {
 	if r.Decrypted || r.Failed || r.Method != "CONNECT" || r.Sent == 0 || r.Received == 0 || !strings.Contains(r.Note, "passed through") {
 		t.Fatalf("tunnel: %+v", r)
 	}
-	if got := tp.Pinned(); len(got) != 1 || got[0] != "bank.example.test" {
+	if got := tp.Pinned(); len(got) != 1 || got[0] != "example.com" {
 		t.Errorf("pinned %v", got)
 	}
 }

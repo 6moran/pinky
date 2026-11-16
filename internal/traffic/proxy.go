@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -31,27 +32,39 @@ import (
 // It speaks HTTP/1.1 to the phone (it offers only http/1.1 in the
 // handshake), and passes no WebSocket connections yet.
 //
+// It connects to no address on this computer (loopback, its own
+// interfaces), and none that is unspecified, link-local (cloud metadata at
+// 169.254.169.254 included) or multicast, whatever name led there: it
+// checks the address it actually dials, so a name that resolves to such an
+// address is refused too.
+//
 // It takes connections only from the addresses Client accepts, and serves
 // the CA's certificate to them at CertPath, for the person to install, and
 // a proxy auto-config file at PACPath. ListenSetup listens for those two
 // files only, never proxying.
 //
 // Hosts Blocked names are never decrypted: their connections pass through
-// as tunnels kept only as their host, marked blocked.
+// as tunnels kept only as their host, marked blocked. The CONNECT host,
+// the server name in the TLS handshake (SNI) and the Host of each request
+// inside are all checked: an app that looks names up itself connects to an
+// address and names the host only in the handshake.
 type Proxy struct {
 	CA    *CA
 	Store *Store
 	// Client says which phone a connection from addr comes from, and
-	// whether the proxy takes it at all. It is asked for each connection
-	// and each request on it. nil takes none.
-	Client func(addr netip.Addr) (device string, ok bool)
+	// whether the proxy takes it at all; setup is true for a listener that
+	// serves only the setup files (ListenSetup). It is asked for each
+	// connection and each request on it. nil takes none.
+	Client func(addr netip.Addr, setup bool) (device string, ok bool)
 	// Record says whether to keep a phone's requests now: false while the
 	// person holds the phone. The requests still go through. nil keeps all.
 	Record func(device string) bool
 	// Transport sends requests on; nil connects directly and checks the
 	// servers' certificates.
 	Transport http.RoundTripper
-	// Dial connects the tunnels; nil dials directly.
+	// Dial connects the tunnels, and the requests when Transport is nil;
+	// nil dials directly, refusing the addresses above. A Dial set here
+	// makes no such check (tests).
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// Blocked says whether a phone's host is one Pinky never decrypts or
 	// records beyond its host; nil blocks only BlockedHosts.
@@ -68,7 +81,51 @@ type Proxy struct {
 	setupOnly map[string]string
 	conns     map[net.Conn]string // open connections, by the listener's address
 	pinned    map[string]time.Time
-	rejected  int
+	// via: CONNECT hosts (mostly addresses) inside whose connections an
+	// app named a blocked host, to that host, for a while.
+	via      map[string]viaHost
+	rejected int
+	loggedAt time.Time // when a refused connection was last logged
+	nconns   int       // the phones' open connections
+
+	// limits replace idleTimeout, responseTimeout and maxConns where not
+	// zero; tests set them before Listen.
+	limits limits
+
+	ownMu sync.Mutex
+	own   map[netip.Addr]bool // this computer's addresses
+	ownAt time.Time
+}
+
+type limits struct {
+	idle, response time.Duration
+	conns          int
+}
+
+func (p *Proxy) idle() time.Duration {
+	if p.limits.idle > 0 {
+		return p.limits.idle
+	}
+	return idleTimeout
+}
+
+func (p *Proxy) maxConns() int {
+	if p.limits.conns > 0 {
+		return p.limits.conns
+	}
+	return maxConns
+}
+
+func (p *Proxy) responseTimeout() time.Duration {
+	if p.limits.response > 0 {
+		return p.limits.response
+	}
+	return responseTimeout
+}
+
+type viaHost struct {
+	host  string
+	until time.Time
 }
 
 // Paths the proxy serves itself, to a phone that opens its address in a
@@ -81,10 +138,23 @@ const (
 	PACPath = "/proxy.pac"
 )
 
-// Timeouts.
+// Timeouts and bounds. Tests set Proxy.limits to shorten the first three.
 const (
-	idleTimeout      = 2 * time.Minute
+	// idleTimeout: a phone's connection that sends nothing for this long,
+	// between requests or within a body, is closed.
+	idleTimeout = 2 * time.Minute
+	// responseTimeout is how long a server may take to start its answer.
+	responseTimeout = 2 * time.Minute
+	// maxConns bounds the phones' open connections, all listeners together.
+	maxConns         = 512
 	handshakeTimeout = 15 * time.Second
+	// headerMax bounds a request's line and headers.
+	headerMax = 1 << 20
+	// helloMax bounds the handshake bytes kept until the server name is
+	// known.
+	helloMax = 64 << 10
+	// logEvery spaces the log lines about refused connections.
+	logEvery = time.Minute
 	// pinnedFor is how long a host whose handshake failed passes through.
 	pinnedFor = 10 * time.Minute
 	pinnedMax = 4096
@@ -194,12 +264,20 @@ func (p *Proxy) accept(ln net.Listener, at string) {
 			c.Close()
 			return
 		}
+		if p.nconns >= p.maxConns() {
+			p.mu.Unlock()
+			c.Close()
+			p.refusedLog("too many connections", remoteAddr(c))
+			continue
+		}
 		p.conns[c] = at
+		p.nconns++
 		p.mu.Unlock()
 		go func() {
 			defer func() {
 				p.mu.Lock()
 				delete(p.conns, c)
+				p.nconns--
 				p.mu.Unlock()
 				c.Close()
 			}()
@@ -208,19 +286,96 @@ func (p *Proxy) accept(ln net.Listener, at string) {
 	}
 }
 
+// refusedLog logs a refused connection, at most once per logEvery.
+func (p *Proxy) refusedLog(why string, from netip.Addr) {
+	p.mu.Lock()
+	p.rejected++
+	n := p.rejected
+	now := time.Now()
+	due := now.Sub(p.loggedAt) >= logEvery
+	if due {
+		p.loggedAt = now
+	}
+	p.mu.Unlock()
+	if due {
+		p.log().Info("traffic: refused a connection", "why", why, "from", from, "refused so far", n)
+	}
+}
+
 // conn is who a connection came from.
 type conn struct {
 	device string
 	client netip.Addr
+	setup  bool // it came to a setup listener
 }
 
 // take says whether the proxy takes a connection from addr now.
-func (p *Proxy) take(addr netip.Addr) (conn, bool) {
+func (p *Proxy) take(addr netip.Addr, setup bool) (conn, bool) {
 	if p.Client == nil {
 		return conn{}, false
 	}
-	dev, ok := p.Client(addr.Unmap())
-	return conn{device: dev, client: addr.Unmap()}, ok
+	dev, ok := p.Client(addr.Unmap(), setup)
+	return conn{device: dev, client: addr.Unmap(), setup: setup}, ok
+}
+
+// idleConn closes a phone's connection that sends nothing for idleTimeout:
+// each read waits that long at most. Tunnels turn it off.
+type idleConn struct {
+	net.Conn
+	idle time.Duration
+	off  bool
+	wait time.Duration // instead of idle, when not 0
+}
+
+func (c *idleConn) Read(b []byte) (int, error) {
+	if !c.off {
+		w := c.wait
+		if w == 0 {
+			w = c.idle
+		}
+		_ = c.Conn.SetReadDeadline(time.Now().Add(w))
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *idleConn) CloseWrite() error {
+	if cw, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return cw.CloseWrite()
+	}
+	return nil
+}
+
+// headerLimit lets at most n bytes through until it is reset; it bounds a
+// request's line and headers, and is lifted for the body.
+type headerLimit struct {
+	r io.Reader
+	n int64 // < 0: no limit
+}
+
+func (l *headerLimit) Read(b []byte) (int, error) {
+	if l.n < 0 {
+		return l.r.Read(b)
+	}
+	if l.n == 0 {
+		return 0, errHeaderTooLarge
+	}
+	if int64(len(b)) > l.n {
+		b = b[:l.n]
+	}
+	n, err := l.r.Read(b)
+	l.n -= int64(n)
+	return n, err
+}
+
+var errHeaderTooLarge = errors.New("traffic: request headers too large")
+
+// readRequest reads one request whose line and headers are at most
+// headerMax bytes, and lifts the limit for its body.
+func readRequest(br *bufio.Reader, lim *headerLimit) (*http.Request, error) {
+	lim.n = headerMax
+	req, err := http.ReadRequest(br)
+	lim.n = -1
+	return req, err
 }
 
 func remoteAddr(c net.Conn) netip.Addr {
@@ -238,23 +393,23 @@ func (p *Proxy) serve(c net.Conn, at string) {
 	if setupOnly {
 		pac = setupFor
 	}
-	cx, ok := p.take(remoteAddr(c))
+	cx, ok := p.take(remoteAddr(c), setupOnly)
 	if !ok {
-		p.mu.Lock()
-		p.rejected++
-		p.mu.Unlock()
-		p.log().Info("traffic: refused a connection", "from", remoteAddr(c))
+		p.refusedLog("not a phone Pinky captures now", remoteAddr(c))
 		return
 	}
-	br := bufio.NewReader(c)
+	ic := &idleConn{Conn: c, idle: p.idle()}
+	lim := &headerLimit{r: ic, n: -1}
+	br := bufio.NewReader(lim)
 	for {
-		_ = c.SetReadDeadline(time.Now().Add(idleTimeout))
-		req, err := http.ReadRequest(br)
+		req, err := readRequest(br, lim)
 		if err != nil {
+			if errors.Is(err, errHeaderTooLarge) {
+				writeError(c, http.StatusRequestHeaderFieldsTooLarge, "The request's headers are too large for Pinky's proxy.")
+			}
 			return
 		}
-		_ = c.SetReadDeadline(time.Time{})
-		if _, ok := p.take(cx.client); !ok {
+		if _, ok := p.take(cx.client, setupOnly); !ok {
 			return
 		}
 		switch {
@@ -263,7 +418,7 @@ func (p *Proxy) serve(c net.Conn, at string) {
 			writeError(c, http.StatusForbidden, "Pinky's proxy runs only during an agent's task; this address serves only Pinky's setup files.")
 			return
 		case req.Method == http.MethodConnect:
-			p.connect(c, br, req, cx)
+			p.connect(ic, br, req, cx)
 			return
 		case !req.URL.IsAbs() || p.isSelf(req.URL.Host):
 			if !p.page(c, req, pac) {
@@ -387,6 +542,7 @@ const caPage = `<!doctype html>
 // HTTP. It returns whether the connection goes on.
 func (p *Proxy) forward(w io.Writer, req *http.Request, cx conn, target string, decrypted bool) bool {
 	start := time.Now()
+	gen := p.gen(cx.device)
 	keep := p.Record == nil || p.Record(cx.device)
 	req.RequestURI = ""
 	if decrypted {
@@ -396,10 +552,14 @@ func (p *Proxy) forward(w io.Writer, req *http.Request, cx conn, target string, 
 	if decrypted && req.Host != "" {
 		host = hostOnly(req.Host)
 	}
-	if !decrypted && p.blocked(cx.device, host) {
+	if p.blocked(cx.device, host) {
 		// Passed on, kept only as its host.
 		if keep {
-			defer p.keep(true, blockedRequest(cx, start, "http://"+host, host), Bodies{})
+			scheme := "http://"
+			if decrypted {
+				scheme = "https://"
+			}
+			defer p.keep(true, gen, blockedRequest(cx, start, scheme+host, host), Bodies{})
 		}
 		keep = false
 	}
@@ -409,7 +569,7 @@ func (p *Proxy) forward(w io.Writer, req *http.Request, cx conn, target string, 
 	if req.Header.Get("Upgrade") != "" {
 		r.End, r.Failed, r.Note = time.Now(), true, "a WebSocket or other upgrade, which Pinky's proxy does not pass on yet"
 		writeError(w, http.StatusNotImplemented, "Pinky's proxy does not pass WebSocket connections on yet.")
-		p.keep(keep, r, Bodies{})
+		p.keep(keep, gen, r, Bodies{})
 		return false
 	}
 	if strings.EqualFold(req.Header.Get("Expect"), "100-continue") {
@@ -432,7 +592,7 @@ func (p *Proxy) forward(w io.Writer, req *http.Request, cx conn, target string, 
 		r.End, r.Failed, r.Note = time.Now(), true, shortErr(err)
 		r.Sent = reqBody.n
 		writeError(w, http.StatusBadGateway, "Pinky's proxy could not reach the server: "+shortErr(err))
-		p.keep(keep, r, Bodies{Request: reqBody.bytes(), RequestCut: reqBody.cut(), RequestType: req.Header.Get("Content-Type"),
+		p.keep(keep, gen, r, Bodies{Request: reqBody.bytes(), RequestCut: reqBody.cut(), RequestType: req.Header.Get("Content-Type"),
 			RequestEncoding: req.Header.Get("Content-Encoding")})
 		return false
 	}
@@ -453,7 +613,7 @@ func (p *Proxy) forward(w io.Writer, req *http.Request, cx conn, target string, 
 	if werr != nil {
 		r.Failed, r.Note = true, "the connection to the phone broke: "+shortErr(werr)
 	}
-	p.keep(keep, r, Bodies{
+	p.keep(keep, gen, r, Bodies{
 		Request: reqBody.bytes(), RequestCut: reqBody.cut(), RequestType: req.Header.Get("Content-Type"), RequestEncoding: req.Header.Get("Content-Encoding"),
 		Response: respBody.bytes(), ResponseCut: respBody.cut(), ResponseType: resp.Header.Get("Content-Type"), ResponseEncoding: resp.Header.Get("Content-Encoding"),
 	})
@@ -477,10 +637,21 @@ func blockedRequest(cx conn, start time.Time, url, host string) Request {
 		URL: url, Host: host, Blocked: true, Note: BlockedNote}
 }
 
-func (p *Proxy) keep(keep bool, r Request, b Bodies) {
+// keep stores a request that started when the phone's store was at
+// generation gen: one that ends after the phone's requests were dropped
+// (its task ended meanwhile) is not kept.
+func (p *Proxy) keep(keep bool, gen int, r Request, b Bodies) {
 	if keep && p.Store != nil {
-		p.Store.Add(r, b)
+		p.Store.AddSince(gen, r, b)
 	}
+}
+
+// gen is a phone's store generation now.
+func (p *Proxy) gen(device string) int {
+	if p.Store == nil {
+		return 0
+	}
+	return p.Store.Gen(device)
 }
 
 // displayURL is the URL as the app asked for it: the Host header's name,
@@ -612,12 +783,14 @@ func (p *Proxy) transport() http.RoundTripper {
 	}
 	p.once.Do(func() {
 		p.tr = &http.Transport{
-			Proxy:               nil, // never through another proxy, nor back through this one
-			DialContext:         p.dial,
-			ForceAttemptHTTP2:   true,
-			MaxIdleConns:        100,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: handshakeTimeout,
+			Proxy:                  nil, // never through another proxy, nor back through this one
+			DialContext:            p.dial,
+			ForceAttemptHTTP2:      true,
+			MaxIdleConns:           100,
+			IdleConnTimeout:        90 * time.Second,
+			TLSHandshakeTimeout:    handshakeTimeout,
+			ResponseHeaderTimeout:  p.responseTimeout(),
+			MaxResponseHeaderBytes: headerMax,
 			// Pass the app's own Accept-Encoding on, and the body as the
 			// server sent it.
 			DisableCompression: true,
@@ -626,6 +799,9 @@ func (p *Proxy) transport() http.RoundTripper {
 	return p.tr
 }
 
+// errRefusedAddr: the proxy does not connect there.
+var errRefusedAddr = errors.New("Pinky's proxy does not connect to this computer, or to link-local or multicast addresses")
+
 func (p *Proxy) dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	if p.isSelf(addr) {
 		return nil, errors.New("the request points back at Pinky's proxy")
@@ -633,14 +809,66 @@ func (p *Proxy) dial(ctx context.Context, network, addr string) (net.Conn, error
 	if p.Dial != nil {
 		return p.Dial(ctx, network, addr)
 	}
-	d := net.Dialer{Timeout: handshakeTimeout}
+	// The address is checked as dialled, after the name is looked up, so
+	// that no name (localhost., 127.1, one that resolves to this computer
+	// or changes its answer) reaches it.
+	d := net.Dialer{Timeout: handshakeTimeout, Control: func(_, address string, _ syscall.RawConn) error {
+		ap, err := netip.ParseAddrPort(address)
+		if err != nil {
+			return err
+		}
+		if p.refusedAddr(ap.Addr()) {
+			return errRefusedAddr
+		}
+		return nil
+	}}
 	return d.DialContext(ctx, network, addr)
+}
+
+// refusedAddr reports whether the proxy never connects to ip: this
+// computer (loopback, unspecified, the addresses of its interfaces),
+// link-local (cloud metadata at 169.254.169.254 included), multicast and
+// broadcast. Other addresses on the phone's network stay reachable: the
+// phone reaches them by itself anyway, and apps use them (a printer, a
+// NAS, a TV).
+func (p *Proxy) refusedAddr(ip netip.Addr) bool {
+	ip = ip.WithZone("").Unmap()
+	switch {
+	case !ip.IsValid(), ip.IsLoopback(), ip.IsUnspecified(), ip.IsLinkLocalUnicast(), ip.IsLinkLocalMulticast(),
+		ip.IsInterfaceLocalMulticast(), ip.IsMulticast():
+		return true
+	case ip.Is4() && (ip.As4()[0] == 0 || ip == netip.AddrFrom4([4]byte{255, 255, 255, 255})):
+		return true
+	}
+	return p.ownAddr(ip)
+}
+
+// ownAddr reports whether ip is one of this computer's addresses, read
+// again every few seconds.
+func (p *Proxy) ownAddr(ip netip.Addr) bool {
+	p.ownMu.Lock()
+	defer p.ownMu.Unlock()
+	if p.own == nil || time.Since(p.ownAt) > 10*time.Second {
+		own := map[netip.Addr]bool{}
+		if addrs, err := net.InterfaceAddrs(); err == nil {
+			for _, a := range addrs {
+				if n, ok := a.(*net.IPNet); ok {
+					if x, ok := netip.AddrFromSlice(n.IP); ok {
+						own[x.Unmap()] = true
+					}
+				}
+			}
+		}
+		p.own, p.ownAt = own, time.Now()
+	}
+	return p.own[ip]
 }
 
 // connect answers CONNECT: it decrypts the connection when the phone
 // accepts the CA's certificate for the host, and passes it through
-// untouched otherwise.
-func (p *Proxy) connect(c net.Conn, br *bufio.Reader, req *http.Request, cx conn) {
+// untouched otherwise. A blocked host, whether the CONNECT, the TLS server
+// name or a request inside names it, is not decrypted.
+func (p *Proxy) connect(c *idleConn, br *bufio.Reader, req *http.Request, cx conn) {
 	target := hostPort(req.Host, "443")
 	host, port, _ := net.SplitHostPort(target)
 	if p.isSelf(target) {
@@ -651,30 +879,49 @@ func (p *Proxy) connect(c net.Conn, br *bufio.Reader, req *http.Request, cx conn
 		return
 	}
 	start := time.Now()
+	gen := p.gen(cx.device)
 	keep := p.Record == nil || p.Record(cx.device)
-	if p.blocked(cx.device, host) {
-		p.tunnel(c, br, target, host, cx, start, false, "")
-		p.keep(keep, blockedRequest(cx, start, "https://"+host, host), Bodies{})
+	if name := p.blockedName(cx.device, host); name != "" {
+		p.tunnel(c, br, target, name, cx, start, false, "", gen)
+		p.keep(keep, gen, blockedRequest(cx, start, "https://"+name, name), Bodies{})
 		return
 	}
 	if p.isPinned(host) {
-		p.tunnel(c, br, target, host, cx, start, keep, "passed through: this host refused Pinky's certificate earlier")
+		p.tunnel(c, br, target, host, cx, start, keep, "passed through: this host refused Pinky's certificate earlier", gen)
 		return
 	}
-	_ = c.SetReadDeadline(time.Now().Add(handshakeTimeout))
+	c.wait = handshakeTimeout
 	first, err := br.Peek(1)
 	if err != nil {
 		return
 	}
 	if first[0] != 0x16 { // not a TLS handshake
-		_ = c.SetReadDeadline(time.Time{})
-		p.tunnel(c, br, target, host, cx, start, keep, "passed through: not TLS")
+		c.wait = 0
+		p.tunnel(c, br, target, host, cx, start, keep, "passed through: not TLS", gen)
 		return
 	}
-	sni := ""
-	tc := tls.Server(&bufConn{Conn: c, r: br}, &tls.Config{
+	// The handshake's bytes are kept until its server name is known, so
+	// that a blocked one still passes through untouched: nothing has been
+	// answered yet, and they are sent on as they came.
+	hc := &helloConn{Conn: c, r: br, keeping: true}
+	var sni, why string
+	tc := tls.Server(hc, &tls.Config{
+		GetConfigForClient: func(h *tls.ClientHelloInfo) (*tls.Config, error) {
+			sni = strings.ToLower(strings.TrimSuffix(h.ServerName, "."))
+			switch {
+			case sni != "" && p.blocked(cx.device, sni):
+				why = "blocked"
+				hc.muted = true
+				return nil, errBlockedName
+			case sni != "" && net.ParseIP(host) == nil && sni != strings.ToLower(strings.TrimSuffix(host, ".")):
+				why = "mismatch"
+				return nil, errOtherName
+			}
+			hc.keeping = false
+			hc.kept = nil
+			return nil, nil
+		},
 		GetCertificate: func(h *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			sni = h.ServerName
 			name := sni
 			if name == "" {
 				name = host
@@ -687,9 +934,25 @@ func (p *Proxy) connect(c net.Conn, br *bufio.Reader, req *http.Request, cx conn
 	ctx, cancel := context.WithTimeout(context.Background(), handshakeTimeout)
 	err = tc.HandshakeContext(ctx)
 	cancel()
+	switch why {
+	case "blocked":
+		c.wait = 0
+		if hc.over {
+			return // too much to send on as it came
+		}
+		p.tunnel(c, io.MultiReader(bytes.NewReader(hc.kept), br), target, sni, cx, start, false, "", gen)
+		p.keep(keep, gen, blockedRequest(cx, start, "https://"+sni, sni), Bodies{})
+		return
+	case "mismatch":
+		p.keep(keep, gen, Request{Device: cx.device, Client: cx.client, Start: start, End: time.Now(), Method: http.MethodConnect,
+			URL: "https://" + target, Host: host, Failed: true,
+			Note: "refused: the app's handshake named another host (" + sni + ") than the one it connected to"}, Bodies{})
+		return
+	}
+	c.wait = 0
 	refused := func(why string) {
 		p.pin(host)
-		p.keep(keep, Request{Device: cx.device, Client: cx.client, Start: start, End: time.Now(), Method: http.MethodConnect,
+		p.keep(keep, gen, Request{Device: cx.device, Client: cx.client, Start: start, End: time.Now(), Method: http.MethodConnect,
 			URL: "https://" + target, Host: host, Failed: true, Note: why}, Bodies{})
 	}
 	if err != nil {
@@ -701,42 +964,106 @@ func (p *Proxy) connect(c net.Conn, br *bufio.Reader, req *http.Request, cx conn
 		name = sni
 	}
 	upstream := net.JoinHostPort(name, port)
-	tbr := bufio.NewReader(tc)
+	lim := &headerLimit{r: tc, n: -1}
+	tbr := bufio.NewReader(lim)
 	served := 0
 	for {
-		_ = c.SetReadDeadline(time.Now().Add(idleTimeout))
-		r, err := http.ReadRequest(tbr)
+		r, err := readRequest(tbr, lim)
 		if err != nil {
-			if served == 0 && !errors.Is(err, net.ErrClosed) && !isTimeout(err) {
+			if errors.Is(err, errHeaderTooLarge) {
+				writeError(tc, http.StatusRequestHeaderFieldsTooLarge, "The request's headers are too large for Pinky's proxy.")
+			} else if served == 0 && !errors.Is(err, net.ErrClosed) && !isTimeout(err) {
 				// An app that checks the certificate itself after the
 				// handshake hangs up without a request.
 				refused("the app hung up after the handshake, as one that pins its certificate does; this host passes through without decryption for a while")
 			}
 			return
 		}
-		_ = c.SetReadDeadline(time.Time{})
-		if _, ok := p.take(cx.client); !ok {
+		if _, ok := p.take(cx.client, cx.setup); !ok {
 			return
 		}
 		served++
+		if h := hostOnly(r.Host); h != "" && p.blocked(cx.device, h) {
+			// Only inside did the app name a blocked host: this request
+			// is passed on and kept as its host only, the connection
+			// ends, and the next ones to this address pass through
+			// untouched.
+			p.blockVia(host, h)
+			p.forward(tc, r, cx, upstream, true)
+			return
+		}
 		if !p.forward(tc, r, cx, upstream, true) {
 			return
 		}
 	}
 }
 
+var (
+	errBlockedName = errors.New("traffic: the handshake names a blocked host")
+	errOtherName   = errors.New("traffic: the handshake names another host than the CONNECT")
+)
+
+// helloConn keeps the bytes the TLS handshake reads, up to helloMax, and
+// sends nothing to the phone while muted.
+type helloConn struct {
+	net.Conn
+	r       io.Reader
+	keeping bool
+	over    bool // more than helloMax came
+	kept    []byte
+	muted   bool
+}
+
+func (h *helloConn) Read(b []byte) (int, error) {
+	n, err := h.r.Read(b)
+	if h.keeping && n > 0 {
+		if len(h.kept)+n > helloMax {
+			h.over, h.keeping, h.kept = true, false, nil
+		} else {
+			h.kept = append(h.kept, b[:n]...)
+		}
+	}
+	return n, err
+}
+
+func (h *helloConn) Write(b []byte) (int, error) {
+	if h.muted {
+		return len(b), nil
+	}
+	return h.Conn.Write(b)
+}
+
+// blockedName returns the blocked host a CONNECT host stands for: itself
+// when it is blocked, or the blocked host an app named inside an earlier
+// connection to it (blockVia); "" when none.
+func (p *Proxy) blockedName(device, host string) string {
+	if p.blocked(device, host) {
+		return host
+	}
+	p.mu.Lock()
+	v, ok := p.via[strings.ToLower(host)]
+	p.mu.Unlock()
+	if ok && time.Now().Before(v.until) && p.blocked(device, v.host) {
+		return v.host
+	}
+	return ""
+}
+
+// blockVia notes that connections to the CONNECT host addr carry the
+// blocked host, for pinnedFor.
+func (p *Proxy) blockVia(addr, host string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.via == nil || len(p.via) >= pinnedMax {
+		p.via = map[string]viaHost{}
+	}
+	p.via[strings.ToLower(addr)] = viaHost{host: strings.ToLower(host), until: time.Now().Add(pinnedFor)}
+}
+
 func isTimeout(err error) bool {
 	var ne net.Error
 	return errors.As(err, &ne) && ne.Timeout()
 }
-
-// bufConn is a connection whose first bytes wait in a bufio.Reader.
-type bufConn struct {
-	net.Conn
-	r *bufio.Reader
-}
-
-func (b *bufConn) Read(p []byte) (int, error) { return b.r.Read(p) }
 
 func (p *Proxy) pin(host string) {
 	p.mu.Lock()
@@ -769,7 +1096,12 @@ func (p *Proxy) Pinned() []string {
 
 // tunnel passes a connection through untouched, and keeps it as one
 // request that was not decrypted.
-func (p *Proxy) tunnel(c net.Conn, br *bufio.Reader, target, host string, cx conn, start time.Time, keep bool, note string) {
+func (p *Proxy) tunnel(c net.Conn, br io.Reader, target, host string, cx conn, start time.Time, keep bool, note string, gen int) {
+	if ic, ok := c.(*idleConn); ok {
+		// A tunnel may rightly stay quiet for long (a push connection).
+		ic.off = true
+		_ = ic.SetReadDeadline(time.Time{})
+	}
 	r := Request{Device: cx.device, Client: cx.client, Start: start, Method: http.MethodConnect,
 		URL: "https://" + target, Host: host, Note: note}
 	ctx, cancel := context.WithTimeout(context.Background(), handshakeTimeout)
@@ -777,7 +1109,7 @@ func (p *Proxy) tunnel(c net.Conn, br *bufio.Reader, target, host string, cx con
 	cancel()
 	if err != nil {
 		r.End, r.Failed, r.Note = time.Now(), true, shortErr(err)
-		p.keep(keep, r, Bodies{})
+		p.keep(keep, gen, r, Bodies{})
 		return
 	}
 	defer up.Close()
@@ -799,7 +1131,7 @@ func (p *Proxy) tunnel(c net.Conn, br *bufio.Reader, target, host string, cx con
 	_ = up.SetDeadline(time.Now().Add(5 * time.Second))
 	<-done
 	r.End, r.Sent, r.Received = time.Now(), sent, recv
-	p.keep(keep, r, Bodies{})
+	p.keep(keep, gen, r, Bodies{})
 }
 
 func closeWrite(c net.Conn) {

@@ -81,19 +81,32 @@ func RedactText(s string) string {
 	return reJWT.ReplaceAllString(s, Redacted)
 }
 
-// RedactHeaders returns the headers with secret values replaced.
+// RedactHeaders returns the headers with secret values replaced; a value
+// that is a URL (Location, Referer, …) is redacted as one.
 func RedactHeaders(hs []Header) []Header {
 	out := make([]Header, len(hs))
 	for i, h := range hs {
 		v := h.Value
-		if SecretName(h.Name) {
+		switch {
+		case SecretName(h.Name):
 			v = Redacted
-		} else {
+		case absoluteURL(v):
+			v = RedactURL(v)
+		default:
 			v = RedactText(v)
 		}
 		out[i] = Header{Name: h.Name, Value: v}
 	}
 	return out
+}
+
+// absoluteURL reports whether s is a URL with a scheme and a host.
+func absoluteURL(s string) bool {
+	if strings.ContainsAny(s, " \t") {
+		return false
+	}
+	u, err := url.Parse(s)
+	return err == nil && u.Scheme != "" && u.Host != ""
 }
 
 // RedactURL replaces the values of secret query parameters, a password in
@@ -134,25 +147,30 @@ func redactQuery(q string) string {
 }
 
 // RedactBody redacts a body by its content type: JSON fields and form
-// parameters with secret names, and tokens in any text. A body that is
-// not text is left out entirely: the result says its type and size
-// instead (binary is true).
+// parameters with secret names, and tokens in any text. A body that
+// starts like JSON is read as JSON whatever its type; one that does not
+// parse (cut at BodyMax) has its secret fields found in the text. A body
+// that is not text is left out entirely: the result says its type and
+// size instead (binary is true).
 func RedactBody(contentType string, body []byte) (text string, binary bool) {
 	mt, _, _ := mime.ParseMediaType(contentType)
-	switch {
-	case mt == "application/x-www-form-urlencoded":
-		return RedactText(redactQuery(string(body))), false
-	case mt == "application/json" || strings.HasSuffix(mt, "+json") || (mt == "" && json.Valid(bytes.TrimSpace(body))):
+	trimmed := bytes.TrimSpace(body)
+	jsonish := len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[')
+	isJSON := mt == "application/json" || strings.HasSuffix(mt, "+json")
+	if jsonish || isJSON {
 		var v any
 		dec := json.NewDecoder(bytes.NewReader(body))
 		dec.UseNumber()
-		if err := dec.Decode(&v); err == nil {
-			out, err := marshalJSON(redactJSON(v))
-			if err == nil {
+		if err := dec.Decode(&v); err == nil && !dec.More() {
+			if out, err := marshalJSON(redactJSON(v)); err == nil {
 				return RedactText(string(out)), false
 			}
 		}
-		return RedactText(string(body)), false
+		return RedactText(redactJSONText(string(body))), false
+	}
+	switch {
+	case mt == "application/x-www-form-urlencoded":
+		return RedactText(redactQuery(string(body))), false
 	case textual(mt, body):
 		return RedactText(string(body)), false
 	}
@@ -178,23 +196,24 @@ func textual(mt string, body []byte) bool {
 }
 
 // redactJSON replaces the values of secret fields, at any depth: a
-// string or a number (but a "code" number, which is mostly a status), not
-// an object or a list, which are searched instead.
+// string, an object or a list whole, or a number (but a "code" number,
+// which is mostly a status). Other fields are searched.
 func redactJSON(v any) any {
 	switch t := v.(type) {
 	case map[string]any:
 		for k, x := range t {
 			switch x.(type) {
-			case string:
-				if SecretName(k) {
-					t[k] = Redacted
-				}
+			case nil, bool:
 			case json.Number:
 				if SecretName(k) && !strings.EqualFold(k, "code") {
 					t[k] = Redacted
 				}
 			default:
-				t[k] = redactJSON(x)
+				if SecretName(k) {
+					t[k] = Redacted
+				} else {
+					t[k] = redactJSON(x)
+				}
 			}
 		}
 		return t
@@ -205,6 +224,85 @@ func redactJSON(v any) any {
 		return t
 	}
 	return v
+}
+
+// reJSONKey finds a JSON object key and its colon.
+var reJSONKey = regexp.MustCompile(`"((?:[^"\\]|\\.){1,200})"\s*:\s*`)
+
+// redactJSONText redacts the secret fields of JSON that does not parse,
+// as a body cut short: each value of a field with a secret name, a
+// string, a number or a whole object or list, up to where it ends or the
+// text does.
+func redactJSONText(s string) string {
+	var b strings.Builder
+	last := 0
+	for _, m := range reJSONKey.FindAllStringSubmatchIndex(s, -1) {
+		if m[0] < last {
+			continue // inside a value already redacted
+		}
+		name := s[m[2]:m[3]]
+		if !SecretName(name) {
+			continue
+		}
+		end := jsonValueEnd(s, m[1])
+		if end == m[1] {
+			continue
+		}
+		if strings.EqualFold(name, "code") && end > m[1] && s[m[1]] != '"' && s[m[1]] != '{' && s[m[1]] != '[' {
+			continue // a status number
+		}
+		b.WriteString(s[last:m[1]])
+		b.WriteString(`"` + Redacted + `"`)
+		last = end
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
+// jsonValueEnd returns where the JSON value starting at i ends: after a
+// string, after the object or list that opens there (or at the end of s
+// when it is cut), or before the next ',', '}' or ']'.
+func jsonValueEnd(s string, i int) int {
+	if i >= len(s) {
+		return i
+	}
+	switch s[i] {
+	case '"':
+		for j := i + 1; j < len(s); j++ {
+			switch s[j] {
+			case '\\':
+				j++
+			case '"':
+				return j + 1
+			}
+		}
+		return len(s)
+	case '{', '[':
+		depth, inStr := 0, false
+		for j := i; j < len(s); j++ {
+			c := s[j]
+			switch {
+			case inStr && c == '\\':
+				j++
+			case c == '"':
+				inStr = !inStr
+			case inStr:
+			case c == '{' || c == '[':
+				depth++
+			case c == '}' || c == ']':
+				depth--
+				if depth == 0 {
+					return j + 1
+				}
+			}
+		}
+		return len(s)
+	}
+	j := i
+	for j < len(s) && !strings.ContainsRune(",}]\n", rune(s[j])) {
+		j++
+	}
+	return j
 }
 
 // marshalJSON writes JSON without escaping HTML; encoding/json sorts map

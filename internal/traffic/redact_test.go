@@ -57,7 +57,7 @@ func TestRedactURL(t *testing.T) {
 func TestRedactBody(t *testing.T) {
 	text, bin := RedactBody("application/json; charset=utf-8",
 		[]byte(`{"user":"amy","password":"hunter2","code":0,"data":{"token":"t-1","items":[{"id":1,"secret":"s"}]},"session":{"id":"x","sid":"y"}}`))
-	want := `{"code":0,"data":{"items":[{"id":1,"secret":"[redacted]"}],"token":"[redacted]"},"password":"[redacted]","session":{"id":"x","sid":"[redacted]"},"user":"amy"}`
+	want := `{"code":0,"data":{"items":[{"id":1,"secret":"[redacted]"}],"token":"[redacted]"},"password":"[redacted]","session":"[redacted]","user":"amy"}`
 	if bin || text != want {
 		t.Errorf("json:\n%s\nwant\n%s", text, want)
 	}

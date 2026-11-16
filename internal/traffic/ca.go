@@ -40,12 +40,13 @@ const (
 )
 
 // How long certificates last. A CA lasts a year and is replaced
-// RenewBefore its end; leaves last a year at most, never past their CA.
-// iOS refuses server certificates valid for more than 825 days.
+// RenewBefore its end; leaves last a day, never past their CA, and are
+// made again once less than leafRenew of it is left.
 const (
 	caLife      = 365 * 24 * time.Hour
 	RenewBefore = 30 * 24 * time.Hour
-	leafLife    = 365 * 24 * time.Hour
+	leafLife    = 24 * time.Hour
+	leafRenew   = time.Hour
 	// leafKeep bounds the certificates kept for hosts; the cache starts
 	// over past it.
 	leafKeep = 1024
@@ -87,11 +88,13 @@ func newCAFor(life time.Duration) (*CA, error) {
 	tag := fmt.Sprintf("%06X", new(big.Int).And(serial, big.NewInt(0xFFFFFF)).Int64())
 	now := time.Now()
 	tmpl := &x509.Certificate{
-		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "Pinky Traffic CA " + tag, Organization: []string{"Pinky"}},
-		NotBefore:             now.Add(-time.Hour),
-		NotAfter:              now.Add(life),
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "Pinky Traffic CA " + tag, Organization: []string{"Pinky"}},
+		NotBefore:    now.Add(-time.Hour),
+		NotAfter:     now.Add(life),
+		KeyUsage:     x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
+		// Only for servers' certificates: not code signing, not mail.
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		MaxPathLenZero:        true,
@@ -304,7 +307,7 @@ func (c *CA) Leaf(host string) (*tls.Certificate, error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if l, ok := c.leaves[host]; ok && time.Now().Before(l.Leaf.NotAfter) {
+	if l, ok := c.leaves[host]; ok && time.Now().Add(leafRenew).Before(l.Leaf.NotAfter) {
 		return l, nil
 	}
 	serial, err := serialNumber()

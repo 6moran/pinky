@@ -30,6 +30,9 @@ type Store struct {
 	list     []*entry // in the order they were added
 	bytes    int
 	dropped  map[string]int // by phone: how many the caps pushed out
+	// gens counts each phone's drops, so that a request that started
+	// before one is not kept after it (AddSince).
+	gens map[string]int
 }
 
 type entry struct {
@@ -46,12 +49,32 @@ func NewStore(maxRequests, maxBytes int) *Store {
 	if maxBytes <= 0 {
 		maxBytes = MaxBytes
 	}
-	return &Store{max: maxRequests, maxBytes: maxBytes, dropped: map[string]int{}}
+	return &Store{max: maxRequests, maxBytes: maxBytes, dropped: map[string]int{}, gens: map[string]int{}}
+}
+
+// Gen returns a phone's generation: how many times its requests were
+// dropped.
+func (s *Store) Gen(device string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.gens[device]
+}
+
+// AddSince keeps a request that started at generation gen, unless the
+// phone's requests were dropped since (its task ended while the request
+// ran); it returns the id and whether it was kept.
+func (s *Store) AddSince(gen int, r Request, b Bodies) (string, bool) {
+	return s.add(&gen, r, b)
 }
 
 // Add keeps a request and its bodies, cut to BodyMax each, and returns
 // its id.
 func (s *Store) Add(r Request, b Bodies) string {
+	id, _ := s.add(nil, r, b)
+	return id
+}
+
+func (s *Store) add(gen *int, r Request, b Bodies) (string, bool) {
 	b.Request, b.RequestCut = cutBody(b.Request, b.RequestCut)
 	b.Response, b.ResponseCut = cutBody(b.Response, b.ResponseCut)
 	size := len(b.Request) + len(b.Response) + len(r.URL) + 256
@@ -63,6 +86,9 @@ func (s *Store) Add(r Request, b Bodies) string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if gen != nil && *gen != s.gens[r.Device] {
+		return "", false
+	}
 	s.next++
 	r.ID = strconv.Itoa(s.next)
 	s.list = append(s.list, &entry{r: r, bodies: b, size: size})
@@ -78,7 +104,7 @@ func (s *Store) Add(r Request, b Bodies) string {
 	if n > 0 {
 		s.list = slices.Delete(s.list, 0, n)
 	}
-	return r.ID
+	return r.ID, true
 }
 
 func cutBody(b []byte, cut bool) ([]byte, bool) {
@@ -164,6 +190,7 @@ func (s *Store) Drop(device string) {
 		return false
 	})
 	delete(s.dropped, device)
+	s.gens[device]++
 }
 
 // Dropped says how many of a phone's requests the bounds pushed out since
