@@ -1551,6 +1551,7 @@
   "settingsPrivacyRecordFolderDefault": "新しい録画は Pinky のフォルダに保存されます。",
   "settingsPrivacyRecordFolderDesc": "新しい録画は {folder} に保存されます。これまでの録画は元の場所に残ります。",
   "settingsPrivacyRecordFolderFailed": "フォルダを選択できませんでした：{reason}",
+  "settingsPrivacyRecordFolderInside": "このフォルダは Pinky 自身の録画フォルダの中にあり、「すべてのアクティビティを削除」でまとめて削除されます。別のフォルダを選択してください。",
   "settingsPrivacyRecordFolderMissing": "{folder} が見つからないため、見つかるまで新しい録画は Pinky のフォルダに保存されます。",
   "settingsPrivacyRecordFolderReset": "Pinky のフォルダを使う",
   "settingsPrivacyRecordOriginal": "オリジナル",

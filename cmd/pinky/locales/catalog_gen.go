@@ -25607,6 +25607,28 @@ func (msgs Messages) SettingsPrivacyRecordFolderFailed(reason string) string {
 	return Catalog.Format(msgs.locale, "settingsPrivacyRecordFolderFailed", map[string]any{"reason": reason})
 }
 
+// SettingsPrivacyRecordFolderInside says "That folder is inside Pinky's own recordings folder, which Delete all activity removes. Choose another folder."
+// in the language the app shows.
+//
+// A toast when the folder picked for Settings › Privacy › Recordings
+// folder is Pinky's own recordings folder or in it (also through a link);
+// the setting stays as it was. Delete all activity is the button of
+// Settings › Privacy that deletes every task.
+func SettingsPrivacyRecordFolderInside() string {
+	return In(i18n.Locale()).SettingsPrivacyRecordFolderInside()
+}
+
+// SettingsPrivacyRecordFolderInside says "That folder is inside Pinky's own recordings folder, which Delete all activity removes. Choose another folder."
+// in the language of msgs.
+//
+// A toast when the folder picked for Settings › Privacy › Recordings
+// folder is Pinky's own recordings folder or in it (also through a link);
+// the setting stays as it was. Delete all activity is the button of
+// Settings › Privacy that deletes every task.
+func (msgs Messages) SettingsPrivacyRecordFolderInside() string {
+	return Catalog.Format(msgs.locale, "settingsPrivacyRecordFolderInside", nil)
+}
+
 // SettingsPrivacyRecordFolderMissing says "{folder} isn't there now, so new recordings go to Pinky's own folder until it is."
 // in the language the app shows.
 //

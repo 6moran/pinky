@@ -9384,6 +9384,10 @@
       }
     }
   },
+  "settingsPrivacyRecordFolderInside": "That folder is inside Pinky's own recordings folder, which Delete all activity removes. Choose another folder.",
+  "@settingsPrivacyRecordFolderInside": {
+    "description": "A toast when the folder picked for Settings › Privacy › Recordings folder is Pinky's own recordings folder or in it (also through a link); the setting stays as it was. Delete all activity is the button of Settings › Privacy that deletes every task."
+  },
   "settingsPrivacyRecordFolderMissing": "{folder} isn't there now, so new recordings go to Pinky's own folder until it is.",
   "@settingsPrivacyRecordFolderMissing": {
     "description": "Settings › Privacy: the line under Recordings folder when the chosen folder is missing, as on a disk that is not plugged in. folder is its path.",

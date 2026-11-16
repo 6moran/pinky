@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -826,16 +827,33 @@ func (a *app) chooseRecordingsFolder(cur string) {
 		return
 	}
 	a.set.picking = true
+	open := a.openDialog
+	if open == nil {
+		open = mygo.Dialog.Open
+	}
+	checker, _ := a.api.(recordingsDirChecker)
 	go func() {
-		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+		paths, err := open(mygo.OpenDialogOptions{
 			Title: locales.SettingsPrivacyRecordFolder(), DefaultPath: cur, Directory: true, CreateDirectories: true,
 		})
+		// The gateway refuses some folders; one it would refuse is not kept,
+		// or Settings would show a folder recordings do not go to. The check
+		// follows symbolic links, which may take long on a network disk.
+		var bad error
+		if err == nil && len(paths) > 0 && checker != nil {
+			bad = checker.CheckRecordingsDir(paths[0])
+		}
 		a.post(func() {
 			a.set.picking = false
 			switch {
 			case err != nil:
 				a.toasts = append(a.toasts, locales.SettingsPrivacyRecordFolderFailed(err.Error()))
-			case len(paths) > 0 && paths[0] != a.settings.RecordingsDir:
+			case len(paths) == 0:
+			case errors.Is(bad, gateway.ErrRecordingsDirInside):
+				a.toasts = append(a.toasts, locales.SettingsPrivacyRecordFolderInside())
+			case bad != nil:
+				a.toasts = append(a.toasts, locales.SettingsPrivacyRecordFolderFailed(bad.Error()))
+			case paths[0] != a.settings.RecordingsDir:
 				a.settings.RecordingsDir = paths[0]
 				a.changed()
 			}

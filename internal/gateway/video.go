@@ -701,6 +701,20 @@ func (g *Gateway) SetRecordingsDir(dir string) error {
 	return g.store.SetRecordingsDir(dir)
 }
 
+// ErrRecordingsDirInside means a folder chosen for recordings is Pinky's
+// own recordings folder or in it, also through a symbolic link.
+var ErrRecordingsDirInside = history.ErrRecordingsDirInside
+
+// CheckRecordingsDir reports why SetRecordingsDir would refuse dir, such as
+// ErrRecordingsDirInside, and nil when it would take it, so Settings can
+// refuse a folder before keeping it.
+func (g *Gateway) CheckRecordingsDir(dir string) error {
+	if g.store == nil {
+		return nil
+	}
+	return g.store.CheckRecordingsDir(dir)
+}
+
 // Recording returns a task's screen recording, or driver.ErrNotFound when
 // it has none (recording was off, the phone never showed a recordable
 // screen, or the retention limit removed it). A running task's recording

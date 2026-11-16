@@ -504,6 +504,9 @@ type app struct {
 	awayAwakeOn bool
 	exportTo    func() (string, error) // where exports go; tests replace it
 	reveal      func(path string)      // shows an exported file; tests replace it
+	// openDialog is the system's open dialog (mygo.Dialog.Open) when nil;
+	// tests replace it.
+	openDialog func(mygo.OpenDialogOptions) ([]string, error)
 }
 
 // Run starts the client and returns when it quits. It owns the main

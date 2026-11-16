@@ -1551,6 +1551,7 @@
   "settingsPrivacyRecordFolderDefault": "新的录屏保存在 Pinky 自己的文件夹里。",
   "settingsPrivacyRecordFolderDesc": "新的录屏保存到 {folder}。之前的录屏留在原处。",
   "settingsPrivacyRecordFolderFailed": "无法选择文件夹：{reason}",
+  "settingsPrivacyRecordFolderInside": "这个文件夹在 Pinky 自己的录屏文件夹里，「删除所有活动」会把它整个删掉。请选择其他文件夹。",
   "settingsPrivacyRecordFolderMissing": "{folder} 现在不在，新的录屏会先保存在 Pinky 自己的文件夹里，直到它回来。",
   "settingsPrivacyRecordFolderReset": "使用 Pinky 的文件夹",
   "settingsPrivacyRecordOriginal": "原始",
