@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Choosing "Only the apps I choose" when an agent first connects no longer hides Deny and Approve in the floating panel.
+
 ## 2026.1117.2 (2026-11-17)
 
 - Long-pressing a payment app's icon on the home screen (PayPal, Alipay) no longer asks for a payment approval.
