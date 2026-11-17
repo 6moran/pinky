@@ -788,10 +788,12 @@ func (g *Gateway) watchedDevices() map[string]bool {
 // and about idle ones every idleLockEvery (idleLockEveryWiFi over Wi-Fi
 // with nobody watching). A locked device whose driver cannot report locks
 // is read instead, so the unlock card goes away when the person unlocks.
+// An idle device that a mirror watches has its screen read too
+// (checkScreen), so a screen off without a lock screen says so.
 func (g *Gateway) pollLocks(ctx context.Context) {
 	watched := g.watchedDevices()
 	g.mu.Lock()
-	var report, read []*device
+	var report, read, screens, unwatched []*device
 	now := time.Now()
 	for _, d := range g.devices {
 		if d.dev == nil || !d.online {
@@ -802,9 +804,19 @@ func (g *Gateway) pollLocks(ctx context.Context) {
 			if !watched[d.id] && d.dev.Info().Connection == "wifi" {
 				every = idleLockEveryWiFi
 			}
-			if _, ok := d.dev.(driver.LockReporter); ok && now.Sub(d.lockReadAt) >= every {
+			_, reports := d.dev.(driver.LockReporter)
+			_, wakes := d.dev.(driver.Waker)
+			if (reports || wakes && watched[d.id]) && now.Sub(d.lockReadAt) >= every {
 				d.lockReadAt = now
-				report = append(report, d)
+				if reports {
+					report = append(report, d)
+				}
+				if wakes && watched[d.id] {
+					screens = append(screens, d)
+				}
+			}
+			if d.screenOff && !watched[d.id] {
+				unwatched = append(unwatched, d)
 			}
 			continue
 		}
@@ -817,6 +829,13 @@ func (g *Gateway) pollLocks(ctx context.Context) {
 	g.mu.Unlock()
 	for _, d := range report {
 		g.checkLock(ctx, d)
+	}
+	for _, d := range screens {
+		g.checkScreen(ctx, d)
+	}
+	for _, d := range unwatched {
+		// Nobody looks, so nothing keeps it current.
+		g.setScreenOff(d, false)
 	}
 	for _, d := range read {
 		g.observe(ctx, d, false)

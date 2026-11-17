@@ -990,6 +990,8 @@ func statusLine(d gateway.DeviceView) string {
 		return locales.GwStatusLocked()
 	case "Idle":
 		return locales.GwStatusIdle()
+	case "Screen off":
+		return locales.GwStatusScreenOff()
 	case "You're in control":
 		return locales.GwStatusInControl()
 	case "Needs setup":

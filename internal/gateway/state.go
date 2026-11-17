@@ -76,6 +76,9 @@ type device struct {
 	// agent works on the phone. workSent: dev was told at all.
 	working, workSent bool
 	locked            bool
+	// screenOff is set while an idle phone that someone watches has its
+	// own screen off without a lock screen (wake.go).
+	screenOff bool
 	// busy is who holds the phone while the agent's task waits for it:
 	// Pinky on the phone, or another computer (onphone.go).
 	busy *driver.BusyError

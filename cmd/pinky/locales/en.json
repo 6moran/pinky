@@ -5330,6 +5330,10 @@
       }
     }
   },
+  "gwStatusScreenOff": "Screen off",
+  "@gwStatusScreenOff": {
+    "description": "A phone's status line: the phone is idle and its own screen is off without a lock screen, such as an Android TV in standby. Shown only in other languages; in English the gateway's own words show."
+  },
   "gwStatusLostOnWiFi": "Lost on Wi-Fi",
   "@gwStatusLostOnWiFi": {
     "description": "A phone's status line: the Mac's device service (usbmuxd) stopped listing an iPhone that is on the same Wi-Fi. Shown only in other languages; in English the gateway's own words show."
@@ -6348,6 +6352,10 @@
   "@mirrorCallType": {
     "description": "A verb phrase that completes the toast \"Couldn't …: <error>\" when text typed on the mirror cannot reach the phone."
   },
+  "mirrorCallWake": "turn the screen on",
+  "@mirrorCallWake": {
+    "description": "A verb phrase that completes the toast \"Couldn't …: <error>\" when a click on the mirror of a phone whose screen is off cannot turn its screen on."
+  },
   "mirrorConnecting": "Connecting…",
   "@mirrorConnecting": {
     "description": "Under a spinner over the mirror while the phone's live picture connects."
@@ -6419,6 +6427,24 @@
         "example": "Pixel 9"
       }
     }
+  },
+  "mirrorScreenOff": "{phone}'s screen is off",
+  "@mirrorScreenOff": {
+    "description": "A pill over the dimmed mirror of a phone whose own screen is off without a lock screen, such as an Android TV in standby, which sends no picture until it wakes. phone is the phone's name. One line over the phone's picture: keep it short.",
+    "placeholders": {
+      "phone": {
+        "type": "String",
+        "example": "TV"
+      }
+    }
+  },
+  "mirrorScreenOffTile": "Screen off",
+  "@mirrorScreenOffTile": {
+    "description": "The same pill over the phone's tile in All phones, which can be 168 points wide."
+  },
+  "mirrorScreenOffWake": "Click to turn it on",
+  "@mirrorScreenOffWake": {
+    "description": "Under mirrorScreenOff: a click on the mirror, or a key, turns the phone's screen on. It never unlocks the phone."
   },
   "mirrorStreamEnded": "The stream ended. Reconnecting…",
   "@mirrorStreamEnded": {

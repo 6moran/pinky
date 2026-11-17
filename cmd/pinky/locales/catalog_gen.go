@@ -14669,6 +14669,24 @@ func (msgs Messages) GwStatusLockedTask(task string) string {
 	return Catalog.Format(msgs.locale, "gwStatusLockedTask", map[string]any{"task": task})
 }
 
+// GwStatusScreenOff says "Screen off"
+// in the language the app shows.
+//
+// A phone's status line: the phone is idle and its own screen is off
+// without a lock screen, such as an Android TV in standby. Shown only in
+// other languages; in English the gateway's own words show.
+func GwStatusScreenOff() string { return In(i18n.Locale()).GwStatusScreenOff() }
+
+// GwStatusScreenOff says "Screen off"
+// in the language of msgs.
+//
+// A phone's status line: the phone is idle and its own screen is off
+// without a lock screen, such as an Android TV in standby. Shown only in
+// other languages; in English the gateway's own words show.
+func (msgs Messages) GwStatusScreenOff() string {
+	return Catalog.Format(msgs.locale, "gwStatusScreenOff", nil)
+}
+
 // GwStatusLostOnWiFi says "Lost on Wi-Fi"
 // in the language the app shows.
 //
@@ -16925,6 +16943,24 @@ func (msgs Messages) MirrorCallType() string {
 	return Catalog.Format(msgs.locale, "mirrorCallType", nil)
 }
 
+// MirrorCallWake says "turn the screen on"
+// in the language the app shows.
+//
+// A verb phrase that completes the toast "Couldn't …: <error>" when a
+// click on the mirror of a phone whose screen is off cannot turn its screen
+// on.
+func MirrorCallWake() string { return In(i18n.Locale()).MirrorCallWake() }
+
+// MirrorCallWake says "turn the screen on"
+// in the language of msgs.
+//
+// A verb phrase that completes the toast "Couldn't …: <error>" when a
+// click on the mirror of a phone whose screen is off cannot turn its screen
+// on.
+func (msgs Messages) MirrorCallWake() string {
+	return Catalog.Format(msgs.locale, "mirrorCallWake", nil)
+}
+
 // MirrorConnecting says "Connecting…"
 // in the language the app shows.
 //
@@ -17057,6 +17093,58 @@ func MirrorScreenLabel(phone string) string { return In(i18n.Locale()).MirrorScr
 // clicks, scrolls and typing reach the phone. phone is the phone's name.
 func (msgs Messages) MirrorScreenLabel(phone string) string {
 	return Catalog.Format(msgs.locale, "mirrorScreenLabel", map[string]any{"phone": phone})
+}
+
+// MirrorScreenOff says "{phone}'s screen is off"
+// in the language the app shows.
+//
+// A pill over the dimmed mirror of a phone whose own screen is off without
+// a lock screen, such as an Android TV in standby, which sends no picture
+// until it wakes. phone is the phone's name. One line over the phone's
+// picture: keep it short.
+func MirrorScreenOff(phone string) string { return In(i18n.Locale()).MirrorScreenOff(phone) }
+
+// MirrorScreenOff says "{phone}'s screen is off"
+// in the language of msgs.
+//
+// A pill over the dimmed mirror of a phone whose own screen is off without
+// a lock screen, such as an Android TV in standby, which sends no picture
+// until it wakes. phone is the phone's name. One line over the phone's
+// picture: keep it short.
+func (msgs Messages) MirrorScreenOff(phone string) string {
+	return Catalog.Format(msgs.locale, "mirrorScreenOff", map[string]any{"phone": phone})
+}
+
+// MirrorScreenOffTile says "Screen off"
+// in the language the app shows.
+//
+// The same pill over the phone's tile in All phones, which can be 168
+// points wide.
+func MirrorScreenOffTile() string { return In(i18n.Locale()).MirrorScreenOffTile() }
+
+// MirrorScreenOffTile says "Screen off"
+// in the language of msgs.
+//
+// The same pill over the phone's tile in All phones, which can be 168
+// points wide.
+func (msgs Messages) MirrorScreenOffTile() string {
+	return Catalog.Format(msgs.locale, "mirrorScreenOffTile", nil)
+}
+
+// MirrorScreenOffWake says "Click to turn it on"
+// in the language the app shows.
+//
+// Under mirrorScreenOff: a click on the mirror, or a key, turns the phone's
+// screen on. It never unlocks the phone.
+func MirrorScreenOffWake() string { return In(i18n.Locale()).MirrorScreenOffWake() }
+
+// MirrorScreenOffWake says "Click to turn it on"
+// in the language of msgs.
+//
+// Under mirrorScreenOff: a click on the mirror, or a key, turns the phone's
+// screen on. It never unlocks the phone.
+func (msgs Messages) MirrorScreenOffWake() string {
+	return Catalog.Format(msgs.locale, "mirrorScreenOffWake", nil)
 }
 
 // MirrorStreamEnded says "The stream ended. Reconnecting…"
