@@ -102,6 +102,7 @@ type Device struct {
 	startFn func(ctx context.Context, l *link, id int) (*media, error)
 
 	raxDialMu   sync.Mutex // one remoteAXService dial at a time (raxReady)
+	padReadMu   sync.Mutex // one read of a screenshot for the passcode pad at a time (padshot.go)
 	svcMu       sync.Mutex
 	info2       *cdService // deviceinfo
 	shot        *cdService // screencapture
