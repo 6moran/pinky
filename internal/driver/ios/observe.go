@@ -128,8 +128,40 @@ func (d *Device) Observe(ctx context.Context, opt driver.ObserveOptions) (*scree
 
 // ObserveWithStats is Observe with timings.
 func (d *Device) ObserveWithStats(ctx context.Context, opt driver.ObserveOptions) (*screen.Screen, ObserveStats, error) {
+	start := time.Now()
 	s, st, err := d.observeWithStats(ctx, opt)
+	d.noteRead(ctx, time.Since(start), st, err)
 	return s, st, d.gone(err)
+}
+
+// noteRead logs a read that took slowRead or more, or that could not use
+// remoteAXService, with what it waited for. Without it a phone whose
+// accessibility service slows down or stops answering leaves nothing in the
+// log: on 2026-11-17 an iPhone 14 Pro's reads went from about 3 s to 6–19 s
+// over a few minutes before the service stopped answering at all, and the
+// log said nothing of it. The trace holds timings and counts, not what the
+// screen shows.
+func (d *Device) noteRead(ctx context.Context, total time.Duration, st ObserveStats, err error) {
+	if ctx.Err() != nil || (total < slowRead && st.RAXError == nil && err == nil) {
+		return
+	}
+	args := []any{"device", d.info.ID, "total", total.Round(time.Millisecond), "source", st.Source,
+		"elements", st.Elements, "complete", st.Complete, "walk", st.Walk.Round(time.Millisecond)}
+	if st.Shot > 0 || st.OCR > 0 {
+		args = append(args, "picture", st.Shot.Round(time.Millisecond), "ocr", st.OCR.Round(time.Millisecond))
+	}
+	for _, e := range []struct {
+		key string
+		err error
+	}{{"remoteax_err", st.RAXError}, {"walk_err", st.WalkError}, {"err", err}} {
+		if e.err != nil {
+			args = append(args, e.key, e.err.Error())
+		}
+	}
+	if len(st.Trace) > 0 {
+		args = append(args, "trace", strings.Join(st.Trace, "; "))
+	}
+	d.log.Info("iphone: slow or failed screen read", args...)
 }
 
 func (d *Device) observeWithStats(ctx context.Context, opt driver.ObserveOptions) (*screen.Screen, ObserveStats, error) {
