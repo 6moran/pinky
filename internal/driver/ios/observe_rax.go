@@ -320,6 +320,10 @@ func (d *Device) observeRAX(ctx context.Context, opt driver.ObserveOptions, st *
 			d.overlayEvents(ctx, nil, scale, si.Width, si.Height) // forget the ones gone
 		}
 	}
+	if shown, n := shownInPicture(els, scale, si.Width, si.Height, lines); n > 0 {
+		els = shown
+		st.Trace = append(st.Trace, fmt.Sprintf("%d elements the phone calls not visible are in the picture", n))
+	}
 	s.Elements, s.Keyboard, s.KeyboardFrame = raxScreenElements(els, scale, si.Width, si.Height, s.App.ID, covered...)
 	// Notifications over the app come first, as they are on top.
 	s.Elements = append(append(notes, s.Elements...), dialog...)
