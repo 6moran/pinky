@@ -425,7 +425,7 @@ func canAllowTask(info approval.Info) bool {
 	if _, ok := info.Data.(*appAsk); ok {
 		return true
 	}
-	return info.Rule == filesRule || info.Rule == policy.RuleAppLogs || info.Rule == settingsRule
+	return info.Rule == filesRule || info.Rule == policy.RuleAppLogs || info.Rule == settingsRule || info.Rule == RuleTraffic
 }
 
 func (g *Gateway) decide(id string, d approval.Decision, note string) error {
@@ -483,6 +483,7 @@ func (g *Gateway) takeOver(d *device, byInput bool) {
 	changed := !d.person
 	if changed {
 		d.person = true
+		g.quietLocked(d, quietPerson, true)
 		g.noteWorkLocked(d)
 		if l != nil {
 			l.tookOverSeen = false
@@ -523,6 +524,7 @@ func (g *Gateway) HandBack(deviceID, note string) error {
 	}
 	g.mu.Lock()
 	d.person, d.personInput = false, false
+	g.quietLocked(d, quietPerson|quietHandoff, false)
 	g.noteWorkLocked(d)
 	l := d.lease
 	if l == nil {
