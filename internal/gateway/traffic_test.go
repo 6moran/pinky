@@ -254,7 +254,10 @@ func TestPhoneTraffic(t *testing.T) {
 		t.Fatalf("asked again: %+v", g.Needs())
 	}
 
-	// While the person holds the phone, nothing it does is kept.
+	// While the person holds the phone, nothing it does is kept. On
+	// Windows' clock the hand back and the next request start in the same
+	// tick; that request is still the agent's.
+	windowsClock(t)
 	if err := g.TakeOver("pixel"); err != nil {
 		t.Fatal(err)
 	}

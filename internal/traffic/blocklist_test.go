@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -166,7 +167,7 @@ func TestLoadCA(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(filepath.Join(dir, CAKeyFile))
-	if err != nil || st.Mode().Perm() != 0o600 || a.KeyPlace != KeyInFile {
+	if err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o600) || a.KeyPlace != KeyInFile {
 		t.Fatalf("key file: %v %v %s", st.Mode(), err, a.KeyPlace)
 	}
 	if life := time.Until(a.Expires()); life < 364*24*time.Hour || life > 366*24*time.Hour {
