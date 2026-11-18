@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Agents can now read the web requests a phone makes during their tasks, through Pinky's own proxy. It is off for every phone until you turn on "Read network traffic" in Settings › Phones and set the phone up there. Pinky asks you first in each task, hides passwords and tokens, and never decrypts banking, payment, brokerage or password-manager apps.
+
 ## 2026.1118.2 (2026-11-18)
 
 - Pinky no longer takes your iPhone's camera and microphone while nobody is using it: it shares the iPhone's screen only while you watch the phone in Pinky or an agent works on it, so the camera and voice input keep working.
