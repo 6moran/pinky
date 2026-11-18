@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1118.1 (2026-11-18)
 
 - A Simulator or an emulator now says "Simulator" or "Emulator" under its name in the sidebar, so it no longer looks like a second copy of your own phone.
 - An Android TV in standby (or any phone whose screen is off without a lock screen) now shows "Screen off" on its mirror instead of seeming to connect forever; click the mirror to turn the screen on.
