@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- On Windows, reading a phone's network traffic no longer leaves out a request the phone made right after you handed it back to the agent.
+
 ## 2026.1118.3 (2026-11-18)
 
 - Agents can now read the web requests a phone makes during their tasks, through Pinky's own proxy. It is off for every phone until you turn on "Read network traffic" in Settings › Phones and set the phone up there. Pinky asks you first in each task, hides passwords and tokens, and never decrypts banking, payment, brokerage or password-manager apps.
