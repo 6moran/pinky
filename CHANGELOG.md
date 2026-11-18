@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1118.2 (2026-11-18)
 
 - Pinky no longer takes your iPhone's camera and microphone while nobody is using it: it shares the iPhone's screen only while you watch the phone in Pinky or an agent works on it, so the camera and voice input keep working.
 - When an app on the iPhone is using the camera or microphone, the mirror now says so, and agents are told to ask you to free them.
