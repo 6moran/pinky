@@ -52,6 +52,7 @@ func (g *Gateway) Devices() []DeviceView {
 		}
 		st, line := g.statusLocked(d, open)
 		v := DeviceView{Info: info, Status: st, StatusLine: line, Paused: paused, Streaming: g.capturingLocked(d)}
+		v.ScreenOff = st == DeviceIdle && d.screenOff
 		if d.online && d.dev != nil {
 			v.Features = featuresOf(d.dev)
 			// Over CoreDevice, the person's Rotate and pinch move to the
@@ -173,6 +174,9 @@ func (g *Gateway) statusLocked(d *device, open []approval.Info) (DeviceStatus, s
 			line += " · in the background"
 		}
 		return DeviceWorking, line
+	}
+	if d.screenOff {
+		return DeviceIdle, "Screen off"
 	}
 	return DeviceIdle, "Idle"
 }
