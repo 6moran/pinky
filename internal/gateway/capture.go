@@ -202,7 +202,7 @@ func (g *Gateway) proxyLocked() (*traffic.Proxy, error) {
 		}
 		c.ca, c.caErr = ca, nil
 	}
-	c.proxy = &traffic.Proxy{CA: c.ca, Store: c.store, Client: g.trafficClient, Record: g.recordTraffic,
+	c.proxy = &traffic.Proxy{CA: c.ca, Store: c.store, Client: g.trafficClient, Record: g.recordTraffic, Now: stamp,
 		Blocked: g.trafficBlocked, Transport: g.opt.TrafficTransport, Dial: g.opt.TrafficDial, Log: g.log}
 	return c.proxy, nil
 }

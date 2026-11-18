@@ -59,6 +59,10 @@ type Proxy struct {
 	// Record says whether to keep a phone's requests now: false while the
 	// person holds the phone. The requests still go through. nil keeps all.
 	Record func(device string) bool
+	// Now gives the time a request starts; nil is time.Now. The gateway
+	// orders requests against when the person held the phone, so it
+	// passes a clock that never gives the same time twice.
+	Now func() time.Time
 	// Transport sends requests on; nil connects directly and checks the
 	// servers' certificates.
 	Transport http.RoundTripper
@@ -541,7 +545,7 @@ const caPage = `<!doctype html>
 // target is where a decrypted request goes ("host:443"); "" for plain
 // HTTP. It returns whether the connection goes on.
 func (p *Proxy) forward(w io.Writer, req *http.Request, cx conn, target string, decrypted bool) bool {
-	start := time.Now()
+	start := p.now()
 	gen := p.gen(cx.device)
 	keep := p.Record == nil || p.Record(cx.device)
 	req.RequestURI = ""
@@ -644,6 +648,14 @@ func (p *Proxy) keep(keep bool, gen int, r Request, b Bodies) {
 	if keep && p.Store != nil {
 		p.Store.AddSince(gen, r, b)
 	}
+}
+
+// now is Now, or time.Now.
+func (p *Proxy) now() time.Time {
+	if p.Now != nil {
+		return p.Now()
+	}
+	return time.Now()
 }
 
 // gen is a phone's store generation now.
@@ -878,7 +890,7 @@ func (p *Proxy) connect(c *idleConn, br *bufio.Reader, req *http.Request, cx con
 	if _, err := io.WriteString(c, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 		return
 	}
-	start := time.Now()
+	start := p.now()
 	gen := p.gen(cx.device)
 	keep := p.Record == nil || p.Record(cx.device)
 	if name := p.blockedName(cx.device, host); name != "" {

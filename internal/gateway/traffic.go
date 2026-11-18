@@ -97,7 +97,7 @@ func (g *Gateway) quietLocked(d *device, why uint8, on bool) {
 	} else {
 		d.quietWhy &^= why
 	}
-	now := time.Now()
+	now := stamp() // ordered against requests (clock.go)
 	switch is := d.quietWhy != 0; {
 	case is && !was:
 		d.quiet = append(d.quiet, span{from: now})
@@ -173,7 +173,7 @@ func (s *Session) Traffic(ctx context.Context, req TrafficRequest) *Result {
 	if res := g.gate(l, req.ApprovalID, false); res != nil {
 		return g.finish(l, res)
 	}
-	now := time.Now()
+	now := stamp() // after every request that started before the read (clock.go)
 	d := l.dev
 	g.mu.Lock()
 	on := g.trafficOn[d.id]
