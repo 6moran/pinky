@@ -61,7 +61,6 @@ func (v *views) History(context.Context, gateway.HistoryQuery) ([]gateway.TaskVi
 }
 func (v *views) Decide(string, gateway.Decision, string) error { return nil }
 func (v *views) Unlock(string) error                           { return nil }
-func (v *views) Wake(string) error                             { return nil }
 func (v *views) TakeOver(string) error                         { return nil }
 func (v *views) HandBack(string, string) error                 { return nil }
 func (v *views) Stop(string) error                             { return nil }

@@ -620,7 +620,7 @@ func (a *app) mirrorView(c *mg.Context, m *mirror, d gateway.DeviceView, t *gate
 					}
 					mg.Text(c, label).FontSize(fsBody).FontWeight(fwSemibold).NoWrap()
 				})
-				if !tile {
+				if _, canWake := a.api.(screenWaker); canWake && !tile {
 					mg.Text(c, locales.MirrorScreenOffWake()).FontSize(fsSmall).TextColor(hex("#d0d0d8")).PassThrough()
 				}
 			})
@@ -747,7 +747,10 @@ func (a *app) mirrorInput(m *mirror, d gateway.DeviceView, ev mg.InputEvent) boo
 	if d.ScreenOff && !m.agent && (ev.Kind == mg.InputPointerDown || ev.Kind == mg.InputKeyDown) {
 		// A phone whose screen is off sends no picture and takes no
 		// touches: the click or key turns its screen on instead.
-		a.wakePhone(d.Info.ID)
+		if w, ok := a.api.(screenWaker); ok {
+			id := d.Info.ID
+			a.call(id, locales.MirrorCallWake(), func() error { return w.Wake(id) })
+		}
 		return true
 	}
 	if m.picW == 0 || m.boxW == 0 || d.Status == gateway.DeviceOffline {
@@ -1090,10 +1093,4 @@ func turnRGBA(img *image.RGBA, turn int) *image.RGBA {
 		}
 	}
 	return out
-}
-
-// wakePhone turns the phone's screen on, as the person asked on a mirror
-// that says it is off. It never unlocks.
-func (a *app) wakePhone(id string) {
-	a.call(id, locales.MirrorCallWake(), func() error { return a.api.Wake(id) })
 }

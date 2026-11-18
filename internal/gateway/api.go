@@ -30,9 +30,6 @@ type API interface {
 	Decide(needID string, d Decision, note string) error
 	// Unlock answers a NeedView of kind NeedUnlock with the saved PIN.
 	Unlock(deviceID string) error
-	// Wake turns the phone's screen on, as the person asked on a mirror
-	// that says the screen is off (DeviceView.ScreenOff). It never unlocks.
-	Wake(deviceID string) error
 	TakeOver(deviceID string) error
 	HandBack(deviceID, note string) error
 	Stop(deviceID string) error
@@ -96,7 +93,7 @@ type DeviceView struct {
 	Streaming bool
 	// ScreenOff is set while the phone is idle and its own screen is off
 	// without a lock screen, such as an Android TV in standby, so its
-	// mirror gets no picture until the person wakes it (API.Wake). The
+	// mirror gets no picture until the person wakes it (Gateway.Wake). The
 	// gateway reads it only while a mirror watches the phone. StatusLine
 	// is then "Screen off".
 	ScreenOff bool
