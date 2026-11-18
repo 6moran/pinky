@@ -650,6 +650,11 @@ func mirrorError(err error) string {
 	if err == nil {
 		return locales.MirrorStreamEnded()
 	}
+	if se := (*driver.SetupError)(nil); errors.As(err, &se) && se.Setup == driver.SetupMediaInUse {
+		// An app on the iPhone uses the camera or microphone; the mirror
+		// tries again by itself.
+		return locales.MirrorNoPicture(locales.MediaInUseTitle())
+	}
 	msg := err.Error()
 	if errors.Is(err, video.ErrNotFound) {
 		// The first sentence says what is missing and how to install it.
