@@ -2,7 +2,7 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## Unreleased
+## 2026.1119.7 (2026-11-19)
 
 - iPhone 响应慢时（比如小程序或网页里的长列表），读屏不会再只读到几个元素：Pinky 会用手机刚推送的画面，或者再读一次；仍可能缺元素时会标明「partial」。
 - iPhone 上，网页里刚滚动进画面的文字不会再在读屏时漏掉。
