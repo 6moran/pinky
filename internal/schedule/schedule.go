@@ -305,7 +305,14 @@ func (s Schedule) Next(after time.Time, local *time.Location) (time.Time, bool) 
 	}
 	at := func(y int, m time.Month, d int, t string) time.Time {
 		h, mi := clock(t)
-		return time.Date(y, m, d, h, mi, 0, 0, loc)
+		n := time.Date(y, m, d, h, mi, 0, 0, loc)
+		// A time the clocks skip as they move forward: time.Date may give
+		// the moment as far before the change; it is due as far after it.
+		want := time.Date(y, m, d, h, mi, 0, 0, time.UTC)
+		if gap := want.Sub(time.Date(n.Year(), n.Month(), n.Day(), n.Hour(), n.Minute(), 0, 0, time.UTC)); gap > 0 {
+			n = n.Add(gap)
+		}
+		return n
 	}
 	if s.Repeat == Once {
 		day, err := time.ParseInLocation(time.DateOnly, s.Date, loc)
