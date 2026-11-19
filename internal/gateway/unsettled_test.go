@@ -106,6 +106,33 @@ func TestUnsettledScreen(t *testing.T) {
 	}
 }
 
+// A screenshot of a screen that kept changing comes with the read that
+// says so (the reporter's second try in GitHub issue #174).
+func TestUnsettledScreenshot(t *testing.T) {
+	ctx := context.Background()
+	base := demo.NewDevice("pixel", "Pixel 9", driver.Android)
+	dev := &restlessDev{Device: base}
+	g := newDevGateway(t, base, dev, func(o *Options) { o.SettleMax = 200 * time.Millisecond })
+	s, _ := connect(t, g, "Collect the daily coins")
+	base.Show("calc")
+	dev.set(func(d *restlessDev) { d.unsettled = true })
+
+	res := s.Observe(ctx, ObserveRequest{Screenshot: true})
+	mustStatus(t, res, StatusSettled)
+	if res.Screenshot == nil {
+		t.Fatalf("no screenshot: %q", res.Message)
+	}
+	if b := res.Screenshot.Bounds(); b.Dx() <= 0 || b.Dy() <= 0 {
+		t.Errorf("screenshot bounds = %v", b)
+	}
+	if !strings.Contains(res.Message, "kept changing") || strings.Contains(res.Message, "No screenshot") || strings.Contains(res.Message, "screenshot failed") {
+		t.Errorf("message = %q", res.Message)
+	}
+	if res.Screen == nil || !res.Screen.Unsettled {
+		t.Errorf("screen = %+v", res.Screen)
+	}
+}
+
 // Home, the way out of a screen Pinky cannot read, is pressed although the
 // read before it failed; other actions still report the failed read and do
 // nothing.
@@ -115,7 +142,7 @@ func TestHomeWhenTheReadFails(t *testing.T) {
 	dev := &restlessDev{Device: base}
 	g := newDevGateway(t, base, dev, func(o *Options) { o.SettleMax = 200 * time.Millisecond })
 	s, _ := connect(t, g, "Collect the daily coins")
-	base.Show("calculator")
+	base.Show("calc")
 	readErr := errors.New("android: uiautomator dump: the screen never stopped changing (could not get idle state)")
 	dev.set(func(d *restlessDev) { d.fail = readErr })
 
@@ -140,7 +167,7 @@ func TestHomeWhenTheReadFails(t *testing.T) {
 
 	// The read after Home fails too: the key went out, and the result says
 	// the screen could not be read.
-	base.Show("calculator")
+	base.Show("calc")
 	dev.set(func(d *restlessDev) { d.fail = readErr })
 	res = s.Act(ctx, Call{}, Action{Tool: "key", Key: "home"})
 	if res.Status != StatusUncertain || !strings.Contains(res.Message, "could not be read afterwards") {
