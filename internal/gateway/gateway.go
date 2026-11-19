@@ -225,6 +225,12 @@ func New(o Options) (*Gateway, error) {
 		} else if n > 0 {
 			g.log.Info("history: ended the tasks a Pinky that did not stop in order left running", "tasks", n)
 		}
+		// An action the person had allowed and that was under way then
+		// may have happened or not.
+		if _, err := st.EndAllowedSteps(context.Background(), string(StatusPending), string(StatusUncertain),
+			string(approval.AllowOnce), string(approval.AllowTask), string(approval.AllowAlways)); err != nil {
+			g.log.Warn("history: allowed steps", "err", err)
+		}
 		if bg, err := st.BackgroundDevices(context.Background()); err == nil {
 			g.background = bg
 		} else {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -386,5 +387,47 @@ func TestEndUnfinishedWithdrawsApprovals(t *testing.T) {
 	}
 	if a := aps[1]; a.Decision != "withdrawn" || !a.Decided.Equal(at.Add(10*time.Second)) {
 		t.Errorf("the open approval: %q, decided %v; want withdrawn when it was asked", a.Decision, a.Decided)
+	}
+}
+
+// TestEndAllowedSteps checks the steps a Pinky that was killed left
+// waiting: the one the person had allowed, which was under way, becomes
+// unsure; one the person denied, one nobody answered and one that finished
+// stay as they are.
+func TestEndAllowedSteps(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	at := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	save := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(s.SaveSession(ctx, Session{ID: "killed", Started: at}))
+	save(s.SaveTask(ctx, Task{ID: "pay", SessionID: "killed", State: "working", Started: at}))
+	for i, c := range []struct{ status, decision string }{
+		{"settled", "allow_once"},
+		{"approval_pending", "deny"},
+		{"approval_pending", ""},
+		{"approval_pending", "allow_task"},
+	} {
+		save(s.SaveStep(ctx, Step{TaskID: "pay", Index: i, Status: c.status, Started: at.Add(time.Duration(i) * time.Second)}))
+		save(s.SaveApproval(ctx, Approval{ID: "ap" + strconv.Itoa(i), TaskID: "pay", StepIndex: i, Decision: c.decision,
+			Created: at.Add(time.Duration(i) * time.Second)}))
+	}
+
+	n, err := s.EndAllowedSteps(ctx, "approval_pending", "uncertain", "allow_once", "allow_task")
+	if err != nil || n != 1 {
+		t.Fatalf("%d steps changed, want 1: %v", n, err)
+	}
+	steps, err := s.Steps(ctx, "pay")
+	if err != nil || len(steps) != 4 {
+		t.Fatalf("%d steps: %v", len(steps), err)
+	}
+	for i, want := range []string{"settled", "approval_pending", "approval_pending", "uncertain"} {
+		if steps[i].Status != want {
+			t.Errorf("step %d: %q, want %q", i, steps[i].Status, want)
+		}
 	}
 }

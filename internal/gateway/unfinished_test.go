@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/DIYgod/pinky/internal/history"
+	"github.com/DIYgod/pinky/internal/screen"
 )
 
 // TestTaskOfAPinkyThatCrashed: a task that ran when Pinky was killed has
@@ -91,5 +94,68 @@ func TestApprovalOfAPinkyThatCrashed(t *testing.T) {
 	}
 	if aps[0].Decision != "withdrawn" || aps[0].Decided.IsZero() {
 		t.Errorf("approval: decision %q, decided %v; want withdrawn at a time", aps[0].Decision, aps[0].Decided)
+	}
+}
+
+// TestAllowedActionOfAPinkyThatCrashed: the person allowed an action, and
+// Pinky was killed while it ran. Nobody knows whether it happened. The next
+// Pinky says so on the task's step, which would otherwise wait for the
+// person for ever, and keeps the answer the person gave.
+func TestAllowedActionOfAPinkyThatCrashed(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	g1, hd := newHookGateway(t, func(o *Options) { o.DataDir = dir })
+	s, _ := connect(t, g1, "Lunch")
+	// Once the person has answered, the phone answers no more: the
+	// allowed tap never finishes.
+	hang := make(chan struct{})
+	answer(t, g1, AllowOnce, func(NeedView) {
+		hd.setObserve(func(*screen.Screen) { <-hang })
+	})
+	done := make(chan *Result, 1)
+	go func() { done <- payInDinely(t, s) }()
+	defer func() { close(hang); <-done }()
+	stored := func(st *history.Store) history.Approval {
+		t.Helper()
+		tasks, err := st.Tasks(ctx, history.Query{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(tasks) != 1 {
+			return history.Approval{}
+		}
+		aps, err := st.Approvals(ctx, tasks[0].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(aps) != 1 {
+			return history.Approval{}
+		}
+		return aps[0]
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for stored(g1.store).Decision != string(AllowOnce) {
+		if time.Now().After(deadline) {
+			t.Fatal("the answer was not stored")
+		}
+		time.Sleep(2 * time.Millisecond)
+		g1.Flush()
+	}
+	// Killed here, with the allowed tap under way.
+
+	g2, _ := newTestGateway(t, func(o *Options) { o.DataDir = dir })
+	tasks, err := g2.History(ctx, HistoryQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("%d tasks in the history", len(tasks))
+	}
+	last := tasks[0].Steps[len(tasks[0].Steps)-1]
+	if last.Status != string(StatusUncertain) {
+		t.Errorf("the allowed step %q has status %q, want %s", last.Text, last.Status, StatusUncertain)
+	}
+	if ap := stored(g2.store); ap.Decision != string(AllowOnce) {
+		t.Errorf("approval: decision %q, want the person's %s", ap.Decision, AllowOnce)
 	}
 }

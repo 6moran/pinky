@@ -410,6 +410,28 @@ func (s *Store) EndUnfinished(ctx context.Context, state, outcome, reason, withd
 	return int(n), tx.Commit()
 }
 
+// EndAllowedSteps gives the steps that still have the status waiting,
+// though the person allowed them (their approval has one of the decisions
+// allowed), the status unsure: the Pinky before this one crashed or was
+// killed while it ran them, and nobody knows whether they happened. It
+// returns how many. For a gateway's start, as EndUnfinished.
+func (s *Store) EndAllowedSteps(ctx context.Context, waiting, unsure string, allowed ...string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	args := []any{unsure, waiting}
+	for _, d := range allowed {
+		args = append(args, d)
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE steps SET status = ? WHERE status = ?
+		AND (task_id, idx) IN (SELECT task_id, step_idx FROM approvals
+			WHERE decision IN (`+strings.TrimSuffix(strings.Repeat("?,", len(allowed)), ",")+`))`, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // Step is one tool call of a task.
 type Step struct {
 	TaskID     string
