@@ -216,6 +216,14 @@ func New(o Options) (*Gateway, error) {
 			return nil, fmt.Errorf("history: %w", err)
 		}
 		g.store = st
+		// What ran when the Pinky before this one crashed or was killed
+		// ended as when a gateway stops in order (Close).
+		if n, err := st.EndUnfinished(context.Background(), string(stateForOutcome(outcomeGatewayStopped)),
+			outcomeGatewayStopped, OutcomeDisconnected); err != nil {
+			g.log.Warn("history: unfinished tasks", "err", err)
+		} else if n > 0 {
+			g.log.Info("history: ended the tasks a Pinky that did not stop in order left running", "tasks", n)
+		}
 		if bg, err := st.BackgroundDevices(context.Background()); err == nil {
 			g.background = bg
 		} else {
@@ -273,10 +281,10 @@ func (g *Gateway) Close() error {
 	}
 	g.mu.Unlock()
 	for _, s := range sessions {
-		s.end("gateway stopped", false)
+		s.end(outcomeGatewayStopped, false)
 	}
 	g.mu.Lock()
-	g.endKeptLocked("gateway stopped", false)
+	g.endKeptLocked(outcomeGatewayStopped, false)
 	g.mu.Unlock()
 	// The proxy stops and the phones' proxy settings go back, while the
 	// providers still reach the phones.
