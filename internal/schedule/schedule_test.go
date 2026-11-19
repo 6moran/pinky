@@ -109,6 +109,8 @@ func TestNextSkippedByTheClocks(t *testing.T) {
 			[]string{"2027-03-14 03:30 EDT", "2027-03-15 02:30 EDT"}},
 		{"once", Schedule{Repeat: Once, Date: "2027-03-14", Times: []string{"02:30"}}, "2027-03-13 12:00",
 			[]string{"2027-03-14 03:30 EDT"}},
+		{"skipped before a later time", Schedule{Repeat: Daily, Times: []string{"02:30", "03:15"}}, "2027-03-13 12:00",
+			[]string{"2027-03-14 03:15 EDT", "2027-03-14 03:30 EDT", "2027-03-15 02:30 EDT"}},
 		{"every hour", Schedule{Repeat: Interval, Every: 1, Times: []string{"00:00"}}, "2027-03-14 00:30",
 			[]string{"2027-03-14 01:00 EST", "2027-03-14 03:00 EDT", "2027-03-14 04:00 EDT"}},
 	}

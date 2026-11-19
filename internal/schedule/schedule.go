@@ -330,10 +330,16 @@ func (s Schedule) Next(after time.Time, local *time.Location) (time.Time, bool) 
 		if !s.on(day.Weekday()) {
 			continue
 		}
+		// The earliest of the day, not the first in order: a time the
+		// clocks skip moves past the ones that follow it.
+		var first time.Time
 		for _, t := range s.dayTimes() {
-			if n := at(day.Year(), day.Month(), day.Day(), t); n.After(after) {
-				return n, true
+			if n := at(day.Year(), day.Month(), day.Day(), t); n.After(after) && (first.IsZero() || n.Before(first)) {
+				first = n
 			}
+		}
+		if !first.IsZero() {
+			return first, true
 		}
 	}
 	return time.Time{}, false
