@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- A task that was running when Pinky crashed or was force-quit no longer shows in Activity as running for ever: the next start ends it as failed at its last step, and Export all includes it.
+
 ## 2026.1118.5 (2026-11-18)
 
 - Add phone now names the iPad on the iPhone card, "iPhone / iPad", so it is clear where to add an iPad.
