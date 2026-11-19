@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1119.5 (2026-11-19)
 
 - A phone you remove while it is plugged in, such as an iPhone charging from the computer, now stays off the list until you unplug it and plug it in again, instead of coming straight back.
 
