@@ -294,6 +294,12 @@ func (d *Device) observeRAX(ctx context.Context, opt driver.ObserveOptions, st *
 	s.App = d.screenApp(ctx, els, locked, func(format string, args ...any) {
 		st.Trace = append(st.Trace, fmt.Sprintf(format, args...))
 	})
+	if web := hasWeb(els); web || st.Complete {
+		// A read that ended early (the app's own two or three elements
+		// before the phone stopped answering) does not tell that a page
+		// is gone.
+		d.noteReadWeb(s.App, web)
+	}
 	if gate != nil {
 		use := gate.late(s)
 		pictured.Wait()

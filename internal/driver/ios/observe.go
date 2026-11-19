@@ -188,7 +188,45 @@ func (d *Device) observeWithStats(ctx context.Context, opt driver.ObserveOptions
 		// through lockdown over usbmuxd): say what remoteAXService said.
 		return nil, st, fmt.Errorf("reading the screen: %w", err)
 	}
-	return d.observeInspector(ctx, opt, st)
+	app, web := d.lastReadWeb()
+	return d.observeInspector(ctx, opt, st, !web, app)
+}
+
+// The inspector walk and web pages. The walk moves the phone's
+// accessibility cursor from the first element on, and a web page scrolls to
+// the element the cursor is on: on 2026-11-19, in a mini-program's list on
+// an iPhone 14 Pro, remoteAXService stopped answering twice, and each walk
+// that stood in for it scrolled the list back to its top (one of 153
+// elements went on to the twelfth row, one of 25 stayed at the first), 140
+// rows into a task. A native list (Settings) does not scroll under it.
+//
+// So when the last read remoteAXService answered showed web content, a
+// read it fails for goes without the walk: the picture's text alone,
+// marked partial, under the app that read named. The phone may have left
+// that app since; a read that answers again says so.
+
+// noteReadWeb remembers the app of a read remoteAXService answered and
+// whether it showed web content.
+func (d *Device) noteReadWeb(app screen.App, web bool) {
+	d.svcMu.Lock()
+	d.readApp, d.readWeb = app, web
+	d.svcMu.Unlock()
+}
+
+// lastReadWeb is what noteReadWeb remembered.
+func (d *Device) lastReadWeb() (screen.App, bool) {
+	d.svcMu.Lock()
+	defer d.svcMu.Unlock()
+	return d.readApp, d.readWeb
+}
+
+func hasWeb(els []raxElement) bool {
+	for _, e := range els {
+		if e.Web {
+			return true
+		}
+	}
+	return false
 }
 
 // lockedScreen is a locked phone whose screen could not be read: no
@@ -204,30 +242,39 @@ func (d *Device) lockedScreen() *screen.Screen {
 	}
 }
 
-// observeInspector is Observe through the inspector walk and OCR.
 // errEmptyRead is a read in which neither the accessibility tree nor OCR
 // found anything.
 var errEmptyRead = errors.New("the iPhone answered with an empty screen")
 
-func (d *Device) observeInspector(ctx context.Context, opt driver.ObserveOptions, st ObserveStats) (*screen.Screen, ObserveStats, error) {
+// observeInspector is Observe through the inspector walk and OCR.
+//
+// With walk false the walk is left out (see "The inspector walk and web
+// pages" above): the screen is the picture's text under the app last, and
+// partial.
+func (d *Device) observeInspector(ctx context.Context, opt driver.ObserveOptions, st ObserveStats, walk bool, last screen.App) (*screen.Screen, ObserveStats, error) {
 	start := time.Now()
-	st.Source = "inspector"
-	ax, err := d.axReady(ctx)
-	if err != nil {
-		return nil, st, err
-	}
-
 	var wg sync.WaitGroup
 	var nodes []axNode
 	var complete bool
 	var walkErr error
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		t := time.Now()
-		nodes, complete, walkErr = ax.walk(ctx, observeLimits)
-		st.Walk = time.Since(t)
-	}()
+	var ax *axSession
+	if walk {
+		st.Source = "inspector"
+		var err error
+		if ax, err = d.axReady(ctx); err != nil {
+			return nil, st, err
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t := time.Now()
+			nodes, complete, walkErr = ax.walk(ctx, observeLimits)
+			st.Walk = time.Since(t)
+		}()
+	} else {
+		st.Source = "picture"
+		walkErr = st.RAXError
+	}
 	var lines []ocrLine
 	var ocrErr error
 	var shotW, shotH int // the picture OCR read, the right way up
@@ -268,15 +315,19 @@ func (d *Device) observeInspector(ctx context.Context, opt driver.ObserveOptions
 	}
 	wg.Wait()
 	si := d.screen()
-	appName, appID := ax.foreground()
-	if app, ok := d.appForPID(ctx, ownerPID(nodes)); ok {
-		appName, appID = app.Name, app.ID
+	appName, appID := last.Name, last.ID
+	if walk {
+		appName, appID = ax.foreground()
+		if app, ok := d.appForPID(ctx, ownerPID(nodes)); ok {
+			appName, appID = app.Name, app.ID
+		}
 	}
 	s := &screen.Screen{
 		Width: si.Width, Height: si.Height,
 		App:         screen.App{Name: appName, ID: appID},
 		Orientation: orientationOf(si.Width, si.Height),
 		Locked:      locked,
+		Partial:     !walk,
 		CapturedAt:  time.Now(),
 	}
 	use := gate.late(s)
