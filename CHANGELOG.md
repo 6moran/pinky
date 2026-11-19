@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1119.6 (2026-11-19)
 
 - A scheduled task set for a time the clocks skip when daylight saving time starts now runs just after they move forward, instead of an hour early, and no longer makes another time that day get skipped.
 
