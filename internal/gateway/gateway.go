@@ -383,10 +383,12 @@ func (g *Gateway) discover(ctx context.Context) {
 	// for its opens.
 	g.listMu.Lock()
 	seenAll := map[string]bool{}
+	listFailed := false
 	for _, p := range g.opt.Providers {
 		infos, err := p.List(ctx)
 		if err != nil {
 			g.log.Warn("list devices", "platform", p.Platform(), "err", err)
+			listFailed = true
 			continue
 		}
 		seen := map[string]bool{}
@@ -463,14 +465,19 @@ func (g *Gateway) discover(ctx context.Context) {
 		}
 	}
 	// A removed phone no provider listed this pass has left its cable:
-	// its next plug-in is the person's doing (updateDevice).
-	g.mu.Lock()
-	for id := range g.removed {
-		if !seenAll[id] {
-			g.removedUnplugged[id] = true
+	// its next plug-in is the person's doing (updateDevice). A pass with
+	// a failed listing says nothing about that provider's phones, so it
+	// marks nothing: one hiccup must not unplug a phone that never left
+	// its cable.
+	if !listFailed {
+		g.mu.Lock()
+		for id := range g.removed {
+			if !seenAll[id] {
+				g.removedUnplugged[id] = true
+			}
 		}
+		g.mu.Unlock()
 	}
-	g.mu.Unlock()
 	g.listMu.Unlock()
 	wg.Wait()
 }
