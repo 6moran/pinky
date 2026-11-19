@@ -286,3 +286,62 @@ func TestDeleteTasksRemovesWhatItCan(t *testing.T) {
 		t.Errorf("the recording in the read-only folder is gone: %v", err)
 	}
 }
+
+// TestEndUnfinished checks what a start ends of a Pinky that was killed: a
+// task without an end, at the end of its last step, or when it started
+// without a step; and a session without an end, when its last task ended.
+// What had ended stays as it was.
+func TestEndUnfinished(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	at := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	save := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(s.SaveSession(ctx, Session{ID: "killed", Started: at}))
+	save(s.SaveSession(ctx, Session{ID: "idle", Started: at}))
+	save(s.SaveSession(ctx, Session{ID: "closed", Started: at, Ended: at.Add(time.Minute), EndReason: "disconnected"}))
+	save(s.SaveTask(ctx, Task{ID: "steps", SessionID: "killed", State: "working", Started: at}))
+	save(s.SaveStep(ctx, Step{TaskID: "steps", Index: 0, Started: at.Add(time.Second), Elapsed: time.Second}))
+	save(s.SaveStep(ctx, Step{TaskID: "steps", Index: 1, Started: at.Add(10 * time.Second), Elapsed: 2 * time.Second}))
+	save(s.SaveTask(ctx, Task{ID: "nosteps", SessionID: "killed", State: "waiting", Started: at.Add(time.Second)}))
+	save(s.SaveTask(ctx, Task{ID: "done", SessionID: "closed", State: "done", Outcome: "done", Started: at, Ended: at.Add(time.Minute)}))
+
+	n, err := s.EndUnfinished(ctx, "failed", "gateway stopped", "disconnected")
+	if err != nil || n != 2 {
+		t.Fatalf("ended %d tasks, want 2: %v", n, err)
+	}
+	for id, want := range map[string]Task{
+		"steps":   {State: "failed", Outcome: "gateway stopped", Ended: at.Add(12 * time.Second)},
+		"nosteps": {State: "failed", Outcome: "gateway stopped", Ended: at.Add(time.Second)},
+		"done":    {State: "done", Outcome: "done", Ended: at.Add(time.Minute)},
+	} {
+		got, ok, err := s.Task(ctx, id)
+		if err != nil || !ok {
+			t.Fatalf("task %s: ok=%v err=%v", id, ok, err)
+		}
+		if got.State != want.State || got.Outcome != want.Outcome || !got.Ended.Equal(want.Ended) {
+			t.Errorf("task %s: %s, %q, ended %v; want %s, %q, ended %v", id, got.State, got.Outcome, got.Ended,
+				want.State, want.Outcome, want.Ended)
+		}
+	}
+	for id, want := range map[string]time.Time{
+		"killed": at.Add(12 * time.Second), "idle": at, "closed": at.Add(time.Minute),
+	} {
+		var ended int64
+		var reason string
+		if err := s.db.QueryRow(`SELECT ended_at, end_reason FROM sessions WHERE id = ?`, id).Scan(&ended, &reason); err != nil {
+			t.Fatal(err)
+		}
+		if ended != want.UnixMilli() || reason != "disconnected" {
+			t.Errorf("session %s: ended %v (%s), want %v", id, time.UnixMilli(ended), reason, want)
+		}
+	}
+	// Nothing is left for a second start.
+	if n, err := s.EndUnfinished(ctx, "failed", "gateway stopped", "disconnected"); err != nil || n != 0 {
+		t.Fatalf("a second start ended %d tasks: %v", n, err)
+	}
+}

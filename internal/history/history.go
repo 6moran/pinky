@@ -371,6 +371,36 @@ func (s *Store) SaveTask(ctx context.Context, t Task) error {
 	return err
 }
 
+// EndUnfinished ends the tasks and sessions that have no end: the ones
+// that ran when the Pinky before this one crashed or was killed, which the
+// history would otherwise show running for ever. A task ends at the end of
+// its last step (when it started, without one) with state and outcome; a
+// session ends when its last task did (when it started, without one) with
+// reason. It returns how many tasks it ended. For a gateway's start, before
+// a task of its own runs.
+func (s *Store) EndUnfinished(ctx context.Context, state, outcome, reason string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE tasks SET state = ?, outcome = ?, ended_at = MAX(started_at,
+			COALESCE((SELECT MAX(started_at + elapsed_ms) FROM steps WHERE task_id = tasks.id), 0))
+		WHERE ended_at = 0`, state, outcome)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET end_reason = ?, ended_at = MAX(started_at,
+			COALESCE((SELECT MAX(ended_at) FROM tasks WHERE session_id = sessions.id), 0))
+		WHERE ended_at = 0`, reason); err != nil {
+		return 0, err
+	}
+	return int(n), tx.Commit()
+}
+
 // Step is one tool call of a task.
 type Step struct {
 	TaskID     string
