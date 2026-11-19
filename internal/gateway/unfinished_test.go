@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 // TestTaskOfAPinkyThatCrashed: a task that ran when Pinky was killed has
@@ -53,4 +54,42 @@ func TestTaskOfAPinkyThatCrashed(t *testing.T) {
 		t.Errorf("export all has %d tasks, want this one", len(out))
 	}
 
+}
+
+// TestApprovalOfAPinkyThatCrashed: an approval that waited for the person
+// when Pinky was killed can no longer be answered. The next Pinky takes it
+// back, as a gateway that stopped in order does, so that the task's step
+// in Activity does not wait for the person for ever.
+func TestApprovalOfAPinkyThatCrashed(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	g1, _ := newTestGateway(t, func(o *Options) { o.DataDir = dir; o.MaxBlock = 20 * time.Millisecond })
+	s, _ := connect(t, g1, "Lunch")
+	mustStatus(t, payInDinely(t, s), StatusPending)
+	g1.Flush()
+	// Killed here, with the approval open.
+
+	g2, _ := newTestGateway(t, func(o *Options) { o.DataDir = dir })
+	stored, err := g2.History(ctx, HistoryQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("%d tasks in the history", len(stored))
+	}
+	task := stored[0]
+	last := task.Steps[len(task.Steps)-1]
+	if last.Status != "withdrawn" {
+		t.Errorf("the approval's step %q has status %q, want withdrawn", last.Text, last.Status)
+	}
+	aps, err := g2.store.Approvals(ctx, task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aps) != 1 {
+		t.Fatalf("%d approvals in the history", len(aps))
+	}
+	if aps[0].Decision != "withdrawn" || aps[0].Decided.IsZero() {
+		t.Errorf("approval: decision %q, decided %v; want withdrawn at a time", aps[0].Decision, aps[0].Decided)
+	}
 }

@@ -376,9 +376,11 @@ func (s *Store) SaveTask(ctx context.Context, t Task) error {
 // history would otherwise show running for ever. A task ends at the end of
 // its last step (when it started, without one) with state and outcome; a
 // session ends when its last task did (when it started, without one) with
-// reason. It returns how many tasks it ended. For a gateway's start, before
+// reason. An approval that was still open can no longer be answered: it
+// and its step get withdrawn as decision and status, at the time it was
+// asked. It returns how many tasks it ended. For a gateway's start, before
 // a task of its own runs.
-func (s *Store) EndUnfinished(ctx context.Context, state, outcome, reason string) (int, error) {
+func (s *Store) EndUnfinished(ctx context.Context, state, outcome, reason, withdrawn string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -386,6 +388,13 @@ func (s *Store) EndUnfinished(ctx context.Context, state, outcome, reason string
 		return 0, err
 	}
 	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE steps SET status = ?
+		WHERE (task_id, idx) IN (SELECT task_id, step_idx FROM approvals WHERE decision = '')`, withdrawn); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE approvals SET decision = ?, decided_at = created_at WHERE decision = ''`, withdrawn); err != nil {
+		return 0, err
+	}
 	res, err := tx.ExecContext(ctx, `UPDATE tasks SET state = ?, outcome = ?, ended_at = MAX(started_at,
 			COALESCE((SELECT MAX(started_at + elapsed_ms) FROM steps WHERE task_id = tasks.id), 0))
 		WHERE ended_at = 0`, state, outcome)

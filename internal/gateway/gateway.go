@@ -217,9 +217,10 @@ func New(o Options) (*Gateway, error) {
 		}
 		g.store = st
 		// What ran when the Pinky before this one crashed or was killed
-		// ended as when a gateway stops in order (Close).
+		// ended as when a gateway stops in order (Close), and the
+		// approvals it left open are taken back.
 		if n, err := st.EndUnfinished(context.Background(), string(stateForOutcome(outcomeGatewayStopped)),
-			outcomeGatewayStopped, OutcomeDisconnected); err != nil {
+			outcomeGatewayStopped, OutcomeDisconnected, "withdrawn"); err != nil {
 			g.log.Warn("history: unfinished tasks", "err", err)
 		} else if n > 0 {
 			g.log.Info("history: ended the tasks a Pinky that did not stop in order left running", "tasks", n)
