@@ -310,7 +310,7 @@ func TestEndUnfinished(t *testing.T) {
 	save(s.SaveTask(ctx, Task{ID: "nosteps", SessionID: "killed", State: "waiting", Started: at.Add(time.Second)}))
 	save(s.SaveTask(ctx, Task{ID: "done", SessionID: "closed", State: "done", Outcome: "done", Started: at, Ended: at.Add(time.Minute)}))
 
-	n, err := s.EndUnfinished(ctx, "failed", "gateway stopped", "disconnected")
+	n, err := s.EndUnfinished(ctx, "failed", "gateway stopped", "disconnected", "withdrawn")
 	if err != nil || n != 2 {
 		t.Fatalf("ended %d tasks, want 2: %v", n, err)
 	}
@@ -341,7 +341,50 @@ func TestEndUnfinished(t *testing.T) {
 		}
 	}
 	// Nothing is left for a second start.
-	if n, err := s.EndUnfinished(ctx, "failed", "gateway stopped", "disconnected"); err != nil || n != 0 {
+	if n, err := s.EndUnfinished(ctx, "failed", "gateway stopped", "disconnected", "withdrawn"); err != nil || n != 0 {
 		t.Fatalf("a second start ended %d tasks: %v", n, err)
+	}
+}
+
+// TestEndUnfinishedWithdrawsApprovals checks the approvals a Pinky that was
+// killed left open: the start takes them back and closes their steps, and
+// leaves an answered one as it is.
+func TestEndUnfinishedWithdrawsApprovals(t *testing.T) {
+	ctx := context.Background()
+	s := openStore(t)
+	at := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	save := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(s.SaveSession(ctx, Session{ID: "killed", Started: at}))
+	save(s.SaveTask(ctx, Task{ID: "asked", SessionID: "killed", State: "waiting", Started: at}))
+	save(s.SaveStep(ctx, Step{TaskID: "asked", Index: 0, Status: "settled", Started: at.Add(time.Second), Elapsed: time.Second}))
+	save(s.SaveApproval(ctx, Approval{ID: "answered", TaskID: "asked", StepIndex: 0, Decision: "allow",
+		Created: at.Add(time.Second), Decided: at.Add(2 * time.Second), Waited: time.Second}))
+	save(s.SaveStep(ctx, Step{TaskID: "asked", Index: 1, Status: "approval_pending", Started: at.Add(10 * time.Second)}))
+	save(s.SaveApproval(ctx, Approval{ID: "open", TaskID: "asked", StepIndex: 1, Created: at.Add(10 * time.Second)}))
+
+	if n, err := s.EndUnfinished(ctx, "failed", "gateway stopped", "disconnected", "withdrawn"); err != nil || n != 1 {
+		t.Fatalf("ended %d tasks, want 1: %v", n, err)
+	}
+	steps, err := s.Steps(ctx, "asked")
+	if err != nil || len(steps) != 2 {
+		t.Fatalf("%d steps: %v", len(steps), err)
+	}
+	if steps[0].Status != "settled" || steps[1].Status != "withdrawn" {
+		t.Errorf("steps: %q, %q; want settled, withdrawn", steps[0].Status, steps[1].Status)
+	}
+	aps, err := s.Approvals(ctx, "asked")
+	if err != nil || len(aps) != 2 {
+		t.Fatalf("%d approvals: %v", len(aps), err)
+	}
+	if a := aps[0]; a.Decision != "allow" || !a.Decided.Equal(at.Add(2*time.Second)) {
+		t.Errorf("the answered approval: %q, decided %v", a.Decision, a.Decided)
+	}
+	if a := aps[1]; a.Decision != "withdrawn" || !a.Decided.Equal(at.Add(10*time.Second)) {
+		t.Errorf("the open approval: %q, decided %v; want withdrawn when it was asked", a.Decision, a.Decided)
 	}
 }
