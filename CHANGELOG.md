@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1119.3 (2026-11-19)
 
 - On Android, Pinky can now read a page that never stops changing, such as a rewards page with live counters: it says the screen is still changing, reads the text from a screenshot, and returns screenshots there, instead of failing.
 - On such pages, Back, Home and Recents work again, and Home works even when the screen cannot be read at all.
