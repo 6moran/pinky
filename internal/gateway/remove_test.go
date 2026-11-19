@@ -21,6 +21,7 @@ type netProvider struct {
 	mu          sync.Mutex
 	conn        map[string]string // Info.Connection by id; the demo's is "usb"
 	unplugged   map[string]bool   // not listed
+	listErr     error            // List fails with it
 	forgotten   map[string]bool
 	calls       []string                 // "forget id", "remember id", "disconnect id"
 	gate        map[string]chan struct{} // Open of these phones waits for the channel to close
@@ -36,6 +37,9 @@ func (p *netProvider) List(ctx context.Context) ([]driver.Info, error) {
 	infos, err := p.Provider.List(ctx)
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.listErr != nil {
+		return nil, p.listErr
+	}
 	var out []driver.Info
 	for _, info := range infos {
 		if p.unplugged[info.ID] {
@@ -424,6 +428,42 @@ func TestRemoveDeviceOnACable(t *testing.T) {
 	if got := p3.callLog(); len(got) != 0 {
 		t.Errorf("a phone plugged in again was forgotten at the next start: %q", got)
 	}
+}
+
+// TestRemoveDeviceOnACableListFailure: a discovery pass in which the
+// provider's List fails must not count the phones it could not list as
+// away from their cables: one hiccup does not add a phone removed on
+// its cable back.
+func TestRemoveDeviceOnACableListFailure(t *testing.T) {
+	dir := t.TempDir()
+	p, _, _ := newTwoPhones()
+	g := twoPhones(t, dir, p)
+	ctx := context.Background()
+	waitOpen(t, g, "pixel")
+
+	if err := g.RemoveDevice(ctx, "pixel", RemoveOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := ids(g); !slices.Equal(got, []string{"mi"}) {
+		t.Fatalf("devices after removing the Pixel: %q", got)
+	}
+
+	// A pass whose listing fails, then normal passes: the Pixel stays
+	// away while it stays on its cable.
+	p.set(func(p *netProvider) { p.listErr = errors.New("the phone hiccuped") })
+	time.Sleep(200 * time.Millisecond)
+	p.set(func(p *netProvider) { p.listErr = nil })
+	time.Sleep(300 * time.Millisecond)
+	if got := ids(g); !slices.Equal(got, []string{"mi"}) {
+		t.Fatalf("a phone removed on its cable came back after a failed listing: %q", got)
+	}
+
+	// It still comes back once it leaves and returns.
+	p.set(func(p *netProvider) { p.unplugged["pixel"] = true })
+	time.Sleep(200 * time.Millisecond)
+	p.set(func(p *netProvider) { delete(p.unplugged, "pixel") })
+	waitIDs(t, g, "mi", "pixel")
 }
 
 // TestRemoveDeviceOnWiFiThenCabled: a phone removed over Wi-Fi that shows
