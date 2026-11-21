@@ -2074,7 +2074,7 @@
   "@trafficRemoveIOS": {
     "description": "How to take Pinky's certificate off an iPhone. Use the names iOS gives these settings in the language."
   },
-  "trafficRemoveAndroid": "To remove Pinky's certificate from the phone: Settings › Security & privacy › More security settings › Encryption & credentials › User credentials, tap Pinky's certificate, then Remove. Set the Wi-Fi proxy back to None too.",
+  "trafficRemoveAndroid": "To remove Pinky's certificate from the phone: Settings › Security & privacy › More security settings › Encryption & credentials › Trusted credentials › User, tap Pinky's certificate, then Remove. Set the Wi-Fi proxy back to None too.",
   "@trafficRemoveAndroid": {
     "description": "How to take Pinky's certificate off an Android phone. Use the names stock Android gives these settings in the language."
   },

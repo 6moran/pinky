@@ -291,7 +291,7 @@
   "trafficCAExpires": "它的有效期到 {date}。到期前一个月，Pinky 会生成新证书，这台手机需要安装新证书。",
   "trafficCARenewed": "旧证书即将过期，Pinky 已生成新证书。请在这台手机上安装新证书（第 2 到 4 步），再移除旧证书。",
   "trafficRemoveIOS": "要从 iPhone 上移除 Pinky 的证书：打开「设置 › 通用 › VPN与设备管理」，轻点 Pinky 的描述文件，再轻点「移除描述文件」。同时把无线局域网的代理改回「关闭」。",
-  "trafficRemoveAndroid": "要从手机上移除 Pinky 的证书：打开「设置 › 安全和隐私 › 更多安全设置 › 加密与凭据 › 用户凭据」，轻点 Pinky 的证书，再轻点「移除」。同时把 WLAN 的代理改回「无」。",
+  "trafficRemoveAndroid": "要从手机上移除 Pinky 的证书：打开「设置 › 安全和隐私 › 更多安全设置 › 加密与凭据 › 可信凭据 › 用户」，轻点 Pinky 的证书，再轻点「卸载」。同时把 WLAN 的代理改回「无」。",
   "trafficBlockTitle": "从不解密",
   "trafficBlockDesc": "Pinky 从不解密银行、支付、证券和密码管理类应用。可以在这里添加其他主机（包括其子域名）：智能体只能看到手机连接过它们。",
   "trafficBlockLabel": "从不解密的主机",
