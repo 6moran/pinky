@@ -416,9 +416,12 @@ func TestWiFiCablePulledMidRead(t *testing.T) {
 	if res.IsError() || res.Screen == nil {
 		t.Fatalf("the read across the pull: %+v", res)
 	}
-	if v, _ := viewOf(g, "iphone"); v.Info.Connection != "wifi" {
-		t.Fatalf("after the pull: %+v", v)
-	}
+	// The read may reopen the phone on Wi-Fi before a discovery pass lists
+	// it there, so the view follows a moment later.
+	waitFor(t, "the iPhone listed on Wi-Fi after the pull", func() bool {
+		v, _ := viewOf(g, "iphone")
+		return v.Info.Connection == "wifi"
+	})
 }
 
 // TestWiFiLockedPhone: a phone locked on Wi-Fi, which the provider lists
