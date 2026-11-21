@@ -2,7 +2,7 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## Unreleased
+## 2026.1121.3 (2026-11-21)
 
 - 手机上有别的 App 跑到前台、而不是智能体打开的时候（比如你在 iPhone 上自己切了 App），智能体现在会收到提醒，它接下来的点按或输入也不会落到那个 App 里。
 - Android 的「离家时使用」现在可以直接填手机的 tailnet 地址：电脑通过别的方式连到 tailnet（比如带 Tailscale 出站的代理）时，不用再装 Tailscale，在「离家时使用」下点「输入地址…」即可。感谢 @crown3 的建议。
