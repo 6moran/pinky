@@ -474,9 +474,17 @@ func (p *Provider) connectWhenUp(ctx context.Context, serial string) error {
 // a while: the person may be away from it.
 func (p *Provider) waitConnected(ctx context.Context, serial string, trust bool) (driver.Info, error) {
 	var asking time.Time
+	gone := func() (driver.Info, error) {
+		return driver.Info{}, fmt.Errorf("android: adb connected to %s, but the phone did not come online: %w", serial, driver.ErrOffline)
+	}
 	for {
 		entries, err := p.cfg.Client.Devices(ctx)
 		if err != nil {
+			if ctx.Err() != nil {
+				// The time ran out during the listing rather than
+				// between two: the phone did not come online all the same.
+				return gone()
+			}
 			return driver.Info{}, wrapErr(err)
 		}
 		for _, e := range entries {
@@ -500,7 +508,7 @@ func (p *Provider) waitConnected(ctx context.Context, serial string, trust bool)
 			}
 		}
 		if err := sleepCtx(ctx, pairPoll); err != nil {
-			return driver.Info{}, fmt.Errorf("android: adb connected to %s, but the phone did not come online: %w", serial, driver.ErrOffline)
+			return gone()
 		}
 	}
 }

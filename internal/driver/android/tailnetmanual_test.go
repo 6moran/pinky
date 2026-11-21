@@ -285,6 +285,21 @@ func TestSetAwayAtNoADB(t *testing.T) {
 	}
 }
 
+// TestSetAwayAtNoADBSlowList: as TestSetAwayAtNoADB, with the time running
+// out while the adb server lists its devices rather than between two
+// listings, as it can on a busy computer.
+func TestSetAwayAtNoADBSlowList(t *testing.T) {
+	f, _, _, p := newByHandFake(t)
+	f.set(func(f *fakeADB) {
+		f.connectOK[tailSerial] = true
+		f.connectsOff = true
+		f.slowDevices = 2 * upWait
+	})
+	if _, err := p.SetAwayAt(context.Background(), piHW, tailAddr); !errors.Is(err, driver.ErrAddrUnreachable) {
+		t.Fatalf("no adb there, time out mid-listing: %v", err)
+	}
+}
+
 // TestByHandReconnect: the reconnector reaches a phone set up by hand
 // without Tailscale here, once a probe gets through.
 func TestByHandReconnect(t *testing.T) {
