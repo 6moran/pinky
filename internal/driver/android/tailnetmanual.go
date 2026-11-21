@@ -235,7 +235,14 @@ func (p *Provider) connectProbed(ctx context.Context, serial string) (driver.Inf
 		err := p.link.probe(ctx, serial)
 		if err == nil {
 			if err = p.connectAddr(ctx, serial); err == nil {
-				return p.waitConnected(ctx, serial, false)
+				info, err := p.waitConnected(ctx, serial, false)
+				if errors.Is(err, driver.ErrOffline) {
+					// Something took the connection, as a proxy does
+					// before its own way to the tailnet fails, but no adb
+					// came up there: the phone is near, not reached.
+					return driver.Info{}, fmt.Errorf("%v: %w", err, driver.ErrAddrUnreachable)
+				}
+				return info, err
 			}
 			err = connectErr(serial, err)
 		}
