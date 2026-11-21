@@ -148,7 +148,7 @@ note: "<the person's note>"
 | `blocked_by_policy` | A rule denied the action; `rule` names it (`credentials` for password and code fields, `Read-only`, `Finance apps`, …) |
 | `approval_denied` | The person said no, or nobody answered in time; `note` may say why |
 | `approval_pending` | The call blocked for 45 s; repeat it with `approval_id` |
-| `stale` | The screen changed while the approval waited, so nothing was done |
+| `stale` | The screen changed while the approval waited, or another app came to the front by itself since the agent's last result (see [phone_observe](#phone_observe)), so nothing was done |
 | `user_took_over` | The person took over; returned at once with the current screen. Later calls return `paused` until they hand back |
 | `paused` | The person is in control. Wait with `phone_handoff` |
 | `stopped` | The person pressed Stop; the lease is gone, and this session may not use that phone again |
@@ -254,6 +254,8 @@ Returns the whole current screen.
 | `ocr` | boolean | Add all the text the pixels show that no element does, as `ocr` lines, however complete the list looks (Android adds such lines by itself only where the list is empty or sparse). On a computer without OCR, the result says so |
 
 Works while the person is in control and while an approval is open.
+
+When another app is in front than on the screen the agent last received, and nothing Pinky knows of brought it up (no action of the agent's and no other call that may change the screen, no input from the person on the computer, no lock, no hand back, and nothing within 5 s of the agent's last action, as a link may open its app late), the result stays `settled` and its message says so: "Chatter is in front now instead of Dinely, and none of your calls opened it: the person may be using the phone, or a call, an alarm or a link that opened late brought it up. …". An iPhone does not report the person's touches on the phone itself, so this is how an agent learns that they may be using it; on Android those touches take over (`user_took_over`). An action other than `phone_launch` and `phone_key { key: "home" }` that finds such an app in front is not sent: it returns `stale` with the same words and the current screen, since what it aimed at is gone. Said once: the next call goes on from the screen it returned. Not on a background display, nor while the person is in control.
 
 ### phone_tap
 
