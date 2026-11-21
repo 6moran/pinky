@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1121.9 (2026-11-21)
 
 - Routing an Android phone over the cable now works when another app on the computer uses Pinky's proxy port, and Settings › Phones names the port when one is taken.
 - A page that keeps reconnecting to a banking or payment site now shows as one line in the phone's network traffic, with how many times it connected, and it shows up right away.
