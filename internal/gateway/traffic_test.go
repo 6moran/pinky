@@ -398,19 +398,26 @@ func TestTrafficBlocklist(t *testing.T) {
 	if strings.Join(setup.Blocklist, ",") != "127.0.0.1,bank.example" {
 		t.Fatalf("setup blocklist %q", setup.Blocklist)
 	}
-	resp, err := phoneClient(setup.Proxies[0]).Get(upstream.URL + "/balance?account=1")
-	if err != nil {
-		t.Fatal(err)
+	// An app that keeps calling the blocked host leaves one line.
+	for range 3 {
+		resp, err := phoneClient(setup.Proxies[0]).Get(upstream.URL + "/balance?account=1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
 	}
-	resp.Body.Close()
-	waitUntil(t, "the request", func() bool { n, _ := g.cap.store.Len(); return n == 1 })
+	waitUntil(t, "the requests", func() bool {
+		rs := g.cap.store.Requests(traffic.Query{Device: "pixel"})
+		return len(rs) == 1 && rs[0].Connections() == 3
+	})
 	res := waitApproved(t, g, s, TrafficRequest{})
-	if !strings.Contains(res.Log, " · not decrypted (blocked)") || strings.Contains(res.Log, "balance") ||
-		!strings.Contains(res.Message, "Blocked: 1 request") {
+	if !strings.Contains(res.Log, " · not decrypted (blocked) · 3 connections, the last at ") || strings.Contains(res.Log, "balance") ||
+		strings.Contains(res.Log, "↑") || strings.Count(res.Log, "\n") != 0 || !strings.Contains(res.Message, "Blocked: 3 connections") {
 		t.Fatalf("list: %+v", res)
 	}
 	res = s.Traffic(ctx, TrafficRequest{ID: "1"})
-	if res.Status != StatusSettled || !strings.Contains(res.Message, "only its host") || strings.Contains(res.Log, "headers") {
+	if res.Status != StatusSettled || !strings.Contains(res.Message, "only its host") || !strings.Contains(res.Message, "3 connections") ||
+		strings.Contains(res.Log, "headers") {
 		t.Fatalf("detail: %+v", res)
 	}
 	g.Close()
