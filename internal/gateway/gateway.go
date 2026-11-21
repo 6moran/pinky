@@ -52,7 +52,7 @@ type Options struct {
 	// SwitchGrace is how long after input to the phone, or the read that
 	// ended an action, a change of the app in front still counts as the
 	// input's doing, as a link may open its app late (appswitch.go);
-	// default 5 s.
+	// default 5 s, and a negative value means none (tests).
 	SwitchGrace time.Duration
 	// RulesEvery is how often the policy's files are checked for hand
 	// edits (policy.Engine.Refresh); default 2 s.
@@ -113,7 +113,9 @@ func (o *Options) defaults() {
 	set(&o.SettleMax, 3*time.Second)
 	set(&o.PollInterval, 250*time.Millisecond)
 	set(&o.DiscoverEvery, 2*time.Second)
-	set(&o.SwitchGrace, 5*time.Second)
+	if o.SwitchGrace == 0 {
+		o.SwitchGrace = 5 * time.Second
+	}
 	set(&o.RulesEvery, 2*time.Second)
 	if o.DefaultScope.Mode == "" {
 		o.DefaultScope = Scope{Mode: ScopeEverything}

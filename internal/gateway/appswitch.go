@@ -55,7 +55,7 @@ func (g *Gateway) switchedApp(l *lease, cur *screen.Screen, readAt time.Time, ow
 	if own && calls > 0 {
 		calls--
 	}
-	if calls != 0 || d.inputs != l.mark.inputs || readAt.Sub(d.inputAt) < g.opt.SwitchGrace {
+	if calls != 0 || d.inputs != l.mark.inputs || (g.opt.SwitchGrace > 0 && readAt.Sub(d.inputAt) < g.opt.SwitchGrace) {
 		return "", "", false
 	}
 	if sameApp(prev.App, view.App) {

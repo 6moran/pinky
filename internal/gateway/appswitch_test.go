@@ -4,15 +4,16 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/DIYgod/pinky/internal/demo"
 	"github.com/DIYgod/pinky/internal/screen"
 )
 
 // noSwitchGrace counts an app that came to the front by itself at once,
-// without the grace a late link gets.
-func noSwitchGrace(o *Options) { o.SwitchGrace = time.Nanosecond }
+// without the grace a late link gets. It turns the grace off rather than
+// making it tiny: Windows' clock is coarse enough that the read can come
+// at the same instant as the input it follows.
+func noSwitchGrace(o *Options) { o.SwitchGrace = -1 }
 
 const switchedWords = "and none of your calls opened it"
 
