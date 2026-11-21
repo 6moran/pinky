@@ -243,6 +243,7 @@ func runApp(args []string) error {
 			if err := swapped.Confirm(); err != nil {
 				c.Log.Warn("update: confirm", "err", err)
 			}
+			quit.earlySignal(signals, mygo.App.Quit)
 		},
 	})
 	if err != nil && *background && !ready {
