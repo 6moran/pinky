@@ -2,6 +2,10 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
+## Unreleased
+
+- 手机通过 sing-box 这类自带 Tailscale 的 VPN 应用接入 tailnet 时，给 Android 手机手动输入 tailnet 地址现在可以用了，不会再提示这个地址不在手机的 VPN 上。感谢 @crown3 反馈。
+
 ## 2026.1121.9 (2026-11-21)
 
 - 电脑上有其他应用占用 Pinky 的代理端口时，Android 手机也能经数据线转发了；端口被占用时，「设置 › 手机」会指出是哪个端口。

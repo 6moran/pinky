@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Typing a tailnet address for an Android phone now works when the phone reaches the tailnet through a VPN app that runs Tailscale itself, such as sing-box, instead of saying the address isn't on the phone's VPN. Thanks @crown3 for reporting it.
+
 ## 2026.1121.9 (2026-11-21)
 
 - Routing an Android phone over the cable now works when another app on the computer uses Pinky's proxy port, and Settings › Phones names the port when one is taken.
