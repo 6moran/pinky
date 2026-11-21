@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Pinky now quits when it is told to stop (SIGTERM or Ctrl-C) just as it starts, instead of staying open until it is killed. Thanks @pseudoyu.
+
 ## 2026.1121.3 (2026-11-21)
 
 - When another app comes to the front on the phone without the agent opening it (on an iPhone, for example, because you opened it yourself), the agent is now told, and its next tap or typing isn't sent into that app.

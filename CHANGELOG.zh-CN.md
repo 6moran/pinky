@@ -2,6 +2,10 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
+## Unreleased
+
+- Pinky 刚启动时收到停止信号（SIGTERM 或 Ctrl-C）现在会正常退出，不会再一直开着，直到被强制结束。感谢 @pseudoyu。
+
 ## 2026.1121.3 (2026-11-21)
 
 - 手机上有别的 App 跑到前台、而不是智能体打开的时候（比如你在 iPhone 上自己切了 App），智能体现在会收到提醒，它接下来的点按或输入也不会落到那个 App 里。
