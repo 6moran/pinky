@@ -1221,7 +1221,9 @@ type TailnetByHand interface {
 	// SetAwayAt sets a phone up as SetAway does, at addr, the phone's
 	// tailnet address. The phone must be connected by cable or Wi-Fi.
 	// The address must be in Tailscale's ranges (else ErrNotTailnetAddr)
-	// and on the phone's own VPN interface (else ErrAddrNotOnPhone); this
+	// and the phone's own on its VPN (else ErrAddrNotOnPhone): on its VPN
+	// interface, or on none of its interfaces while a VPN that runs
+	// Tailscale in userspace is up; this
 	// computer must reach the phone there (else ErrAddrUnreachable, or
 	// ErrNotListening when something answers but not the phone's adb);
 	// and what answers there must be this phone (else ErrNotThePhone).
@@ -1231,7 +1233,7 @@ type TailnetByHand interface {
 // Errors of TailnetByHand.SetAwayAt.
 var (
 	ErrNotTailnetAddr  = errors.New("not a tailnet address: it must be in 100.64.0.0/10 or fd7a:115c:a1e0::/48")
-	ErrAddrNotOnPhone  = errors.New("the address is not on the phone's own VPN interface")
+	ErrAddrNotOnPhone  = errors.New("the address is not the phone's own on its VPN")
 	ErrAddrUnreachable = errors.New("this computer does not reach the phone at that address")
 	ErrNotThePhone     = errors.New("the device that answers at that address is not this phone")
 )

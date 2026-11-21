@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -60,6 +61,33 @@ func TestParseVPNAddrs(t *testing.T) {
 	}
 	if got := parseVPNAddrs("20: rmnet_data0    inet 100.72.9.9/30 scope global rmnet_data0\n"); len(got) != 0 {
 		t.Fatalf("a carrier's address counted as a VPN's: %v", got)
+	}
+}
+
+// TestAddrOnPhone: which tailnet addresses count as the phone's own.
+func TestAddrOnPhone(t *testing.T) {
+	const (
+		lo      = "1: lo    inet 127.0.0.1/8 scope host lo\n"
+		wlan    = "30: wlan0    inet 192.168.1.42/24 brd 192.168.1.255 scope global wlan0\n"
+		ts      = "31: tun0    inet 100.101.2.2/32 scope global tun0\n"
+		singBox = "31: tun0    inet 172.19.0.1/30 scope global tun0\n" // a VPN app's own address
+		carrier = "20: rmnet_data0    inet 100.101.2.2/30 scope global rmnet_data0\n"
+	)
+	for _, c := range []struct {
+		what, out string
+		ok        bool
+	}{
+		{"on Tailscale's interface", lo + wlan + ts, true},
+		{"another device's, with Tailscale's interface up", lo + wlan + strings.ReplaceAll(ts, "100.101.2.2", "100.101.4.4"), false},
+		{"on no interface, Tailscale in userspace", lo + wlan + singBox, true},
+		{"on no interface, no VPN up", lo + wlan, false},
+		{"a carrier's", lo + wlan + carrier, false},
+		{"a carrier's, with a VPN up", lo + carrier + singBox, false},
+	} {
+		err := addrOnPhone(netip.MustParseAddr("100.101.2.2"), c.out)
+		if (err == nil) != c.ok || (err != nil && !errors.Is(err, driver.ErrAddrNotOnPhone)) {
+			t.Errorf("%s: %v", c.what, err)
+		}
 	}
 }
 
@@ -244,6 +272,35 @@ func TestSetAwayAtIdentity(t *testing.T) {
 	f.set(func(f *fakeADB) { f.props[tailSerial] = "Galaxy\n16\n36\nGalaxy\nOTHER123\n" })
 	if _, err := p.SetAwayAt(ctx, piHW, tailAddr); !errors.Is(err, driver.ErrNotThePhone) {
 		t.Fatalf("another phone: %v", err)
+	}
+}
+
+// TestSetAwayAtUserspace: a VPN app that runs Tailscale in userspace
+// (sing-box) shows its own address on tun0, not the tailnet's. The phone
+// answers at the tailnet address with Pinky's mark, so it is set up; what
+// answers there without the mark is not.
+func TestSetAwayAtUserspace(t *testing.T) {
+	f, ph, m, p := newByHandFake(t)
+	ph.mu.Lock()
+	ph.addrs = "30: wlan0    inet " + wifiAddr + "/24 scope global wlan0\n" +
+		"31: tun0    inet 172.19.0.1/30 scope global tun0\n"
+	ph.mu.Unlock()
+	ctx := context.Background()
+	m.mu.Lock()
+	m.impostor = true
+	m.mu.Unlock()
+	if _, err := p.SetAwayAt(ctx, piHW, tailAddr); !errors.Is(err, driver.ErrNotThePhone) {
+		t.Fatalf("another device there: %v", err)
+	}
+	m.mu.Lock()
+	m.impostor = false
+	m.mu.Unlock()
+	a, err := p.SetAwayAt(ctx, piHW, tailAddr)
+	if err != nil || !a.On || !a.Manual || a.Addr != tailAddr || a.Missing != "" {
+		t.Fatalf("on: %+v, %v", a, err)
+	}
+	if !f.connectedTo(tailSerial) {
+		t.Fatalf("connects %q", f.connected())
 	}
 }
 

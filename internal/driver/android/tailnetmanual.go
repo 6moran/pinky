@@ -24,9 +24,11 @@ import (
 // tailnet. Instead:
 //
 //   - the address must be in Tailscale's ranges (tailnet.Contains);
-//   - it must be on the phone's own VPN interface, read over the cable or
-//     Wi-Fi connection while the phone is still near: so the address is
-//     this phone's on its tailnet;
+//   - it must be the phone's own on its VPN, read over the cable or Wi-Fi
+//     connection while the phone is still near (addrOnPhone): on the VPN
+//     interface, or, when a VPN app runs Tailscale in userspace (sing-box)
+//     and so shows no tailnet address there, on none of the phone's
+//     interfaces while a VPN is up;
 //   - what answers there must carry Pinky's mark for this phone
 //     (identity.go), as any connection over the network must;
 //   - a TCP probe to the phone's adb port, rather than Tailscale's view
@@ -60,12 +62,12 @@ func (p *Provider) SetAwayAt(ctx context.Context, id, addr string) (driver.Away,
 	e := entryOf(entries, local)
 
 	// The address is the phone's own, on its VPN.
-	vpn, err := p.vpnAddrs(ctx, local)
+	out, err := p.cfg.Client.Shell(ctx, local, "ip -o addr show 2>/dev/null")
 	if err != nil {
-		return driver.Away{}, err
+		return driver.Away{}, wrapErr(err)
 	}
-	if !slices.Contains(vpn, a) {
-		return driver.Away{}, fmt.Errorf("android: %s: %s is not on the phone's VPN interface (it has %s): %w", id, a, addrList(vpn), driver.ErrAddrNotOnPhone)
+	if err := addrOnPhone(a, string(out)); err != nil {
+		return driver.Away{}, fmt.Errorf("android: %s: %w", id, err)
 	}
 	// The phone carries Pinky's mark, to check what answers there.
 	if err := p.markNear(ctx, e, id); err != nil {
@@ -130,40 +132,71 @@ func parseByHand(s string) (netip.Addr, error) {
 	return a, nil
 }
 
-// vpnAddrs returns the addresses on the phone's VPN interfaces, from
-// `ip -o addr show`.
-func (p *Provider) vpnAddrs(ctx context.Context, serial string) ([]netip.Addr, error) {
-	out, err := p.cfg.Client.Shell(ctx, serial, "ip -o addr show 2>/dev/null")
-	if err != nil {
-		return nil, wrapErr(err)
+// addrOnPhone says whether a, an address in Tailscale's ranges, is the
+// phone's own on its VPN, from the phone's `ip -o addr show`:
+//
+//   - on a VPN interface (tun<n>: Android names every VPN app's interface
+//     so), it is, as with Tailscale's own app;
+//   - when a VPN interface has another tailnet address, it is not: that is
+//     the phone's, and a is another device's;
+//   - on any other interface, it is not: a carrier's address in
+//     100.64.0.0/10 is on the mobile data interface (rmnet, ccmni), and
+//     traffic to it would not go through the tailnet;
+//   - on none, it is, as long as a VPN is up: a VPN app that runs
+//     Tailscale in userspace (sing-box's Tailscale endpoint) gives its
+//     interface an address of its own and answers at the tailnet address
+//     itself. Pinky's mark then tells this phone from another device.
+func addrOnPhone(a netip.Addr, out string) error {
+	vpn, other := parseIfAddrs(out)
+	var tail []netip.Addr
+	for _, v := range vpn {
+		if tailnet.Contains(v) {
+			tail = append(tail, v)
+		}
 	}
-	return parseVPNAddrs(string(out)), nil
+	switch {
+	case slices.Contains(vpn, a):
+		return nil
+	case len(tail) > 0:
+		return fmt.Errorf("%s is not on the phone's VPN interface (it has %s): %w", a, addrList(tail), driver.ErrAddrNotOnPhone)
+	case slices.Contains(other, a):
+		return fmt.Errorf("%s is on the phone's own network interface, not its VPN: %w", a, driver.ErrAddrNotOnPhone)
+	case len(vpn) == 0:
+		return fmt.Errorf("%s: the phone has no VPN up: %w", a, driver.ErrAddrNotOnPhone)
+	}
+	return nil
 }
 
-// parseVPNAddrs reads `ip -o addr show` (parsePhoneAddrs has an example)
-// for the addresses on VPN interfaces: Android gives every VPN app's
-// interface the name tun<n>. Carriers' addresses in 100.64.0.0/10 are on
-// the mobile data interface (rmnet, ccmni), so they are not taken.
+// parseVPNAddrs is the addresses on the phone's VPN interfaces, from
+// parseIfAddrs.
 func parseVPNAddrs(out string) []netip.Addr {
-	var addrs []netip.Addr
+	vpn, _ := parseIfAddrs(out)
+	return vpn
+}
+
+// parseIfAddrs reads `ip -o addr show` (parsePhoneAddrs has an example)
+// for the addresses on VPN interfaces (tun<n>) and on all the others.
+func parseIfAddrs(out string) (vpn, other []netip.Addr) {
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.Fields(line)
 		if len(f) < 4 || (f[2] != "inet" && f[2] != "inet6") {
-			continue
-		}
-		name, _, _ := strings.Cut(f[1], "@")
-		if !strings.HasPrefix(name, "tun") {
 			continue
 		}
 		pfx, err := netip.ParsePrefix(f[3])
 		if err != nil {
 			continue
 		}
-		if a := pfx.Addr().Unmap(); !slices.Contains(addrs, a) {
-			addrs = append(addrs, a)
+		a := pfx.Addr().Unmap()
+		name, _, _ := strings.Cut(f[1], "@")
+		list := &other
+		if strings.HasPrefix(name, "tun") {
+			list = &vpn
+		}
+		if !slices.Contains(*list, a) {
+			*list = append(*list, a)
 		}
 	}
-	return addrs
+	return vpn, other
 }
 
 func addrList(addrs []netip.Addr) string {
