@@ -6101,18 +6101,48 @@ func (msgs Messages) TrafficProblemNoAddress(phone string) string {
 	return Catalog.Format(msgs.locale, "trafficProblemNoAddress", map[string]any{"phone": phone})
 }
 
-// TrafficProblemListenFailed says "Another program on this computer uses the proxy's port, so Pinky can't listen."
+// TrafficProblemListenFailed says "Another program on this computer uses port {port} at {address}, so {phone}'s Wi-Fi proxy can't reach Pinky. Quit that…"
 // in the language the app shows.
 //
-// Why Pinky's proxy does not listen: its port is taken.
-func TrafficProblemListenFailed() string { return In(i18n.Locale()).TrafficProblemListenFailed() }
+// Why Pinky's proxy does not listen for the phone's Wi-Fi proxy: another
+// program holds the port of the proxy or of its setup link at this
+// computer's address on the phone's network. The cable route
+// (trafficRouteTitle) is not affected. port is the port, address this
+// computer's address, phone the phone's name.
+func TrafficProblemListenFailed(port string, address string, phone string) string {
+	return In(i18n.Locale()).TrafficProblemListenFailed(port, address, phone)
+}
 
-// TrafficProblemListenFailed says "Another program on this computer uses the proxy's port, so Pinky can't listen."
+// TrafficProblemListenFailed says "Another program on this computer uses port {port} at {address}, so {phone}'s Wi-Fi proxy can't reach Pinky. Quit that…"
 // in the language of msgs.
 //
-// Why Pinky's proxy does not listen: its port is taken.
-func (msgs Messages) TrafficProblemListenFailed() string {
-	return Catalog.Format(msgs.locale, "trafficProblemListenFailed", nil)
+// Why Pinky's proxy does not listen for the phone's Wi-Fi proxy: another
+// program holds the port of the proxy or of its setup link at this
+// computer's address on the phone's network. The cable route
+// (trafficRouteTitle) is not affected. port is the port, address this
+// computer's address, phone the phone's name.
+func (msgs Messages) TrafficProblemListenFailed(port string, address string, phone string) string {
+	return Catalog.Format(msgs.locale, "trafficProblemListenFailed", map[string]any{"port": port, "address": address, "phone": phone})
+}
+
+// TrafficProblemRouteListenFailed says "Pinky couldn't listen on this computer's loopback (127.0.0.1), so {phone} isn't routed over its cable. The Wi-Fi prox…"
+// in the language the app shows.
+//
+// Why the cable route (trafficRouteTitle) does not start: Pinky could not
+// listen on this computer's loopback address at any port. The Wi-Fi proxy
+// still works. phone is the phone's name.
+func TrafficProblemRouteListenFailed(phone string) string {
+	return In(i18n.Locale()).TrafficProblemRouteListenFailed(phone)
+}
+
+// TrafficProblemRouteListenFailed says "Pinky couldn't listen on this computer's loopback (127.0.0.1), so {phone} isn't routed over its cable. The Wi-Fi prox…"
+// in the language of msgs.
+//
+// Why the cable route (trafficRouteTitle) does not start: Pinky could not
+// listen on this computer's loopback address at any port. The Wi-Fi proxy
+// still works. phone is the phone's name.
+func (msgs Messages) TrafficProblemRouteListenFailed(phone string) string {
+	return Catalog.Format(msgs.locale, "trafficProblemRouteListenFailed", map[string]any{"phone": phone})
 }
 
 // TrafficProblemNoCA says "Pinky couldn't read or make its certificate."

@@ -225,9 +225,9 @@ func (s *Session) Traffic(ctx context.Context, req TrafficRequest) *Result {
 	}
 	// Nothing to ask the person about when the proxy takes nothing from
 	// the phone.
-	listening, routed, problem := g.trafficListening(d.id)
+	listening, routed, problem, failAt := g.trafficListening(d.id)
 	if len(listening) == 0 && !routed && len(g.cap.store.Requests(traffic.Query{Device: d.id, From: from, To: now})) == 0 {
-		return record("Failed: "+what, errResult(ErrUnsupported, "%s", notListening(phone, problem)))
+		return record("Failed: "+what, errResult(ErrUnsupported, "%s", notListening(phone, problem, failAt)))
 	}
 	if res := g.askForTraffic(ctx, l, req.Call, phone, args, strings.TrimSpace(req.ID) != "" && req.Bodies); res != nil {
 		return g.finish(l, res)
@@ -596,12 +596,19 @@ func sizeText(n int64) string {
 	return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
 }
 
-// notListening says why Pinky's proxy takes no traffic from a phone.
-func notListening(phone, problem string) string {
+// notListening says why Pinky's proxy takes no traffic from a phone;
+// failAt is the address another program holds, for TrafficListenFailed.
+func notListening(phone, problem, failAt string) string {
 	const setup = " The person sets this up in Pinky's Settings › Phones, under Read network traffic; ask them if the task needs it, and go on without it otherwise."
 	switch problem {
 	case TrafficListenFailed:
-		return fmt.Sprintf("Pinky's proxy could not listen for %s: another program uses its port on this computer.", phone) + setup
+		at := "the proxy's port"
+		if failAt != "" {
+			at = failAt
+		}
+		return fmt.Sprintf("Pinky's proxy could not listen for %s's Wi-Fi proxy: another program on this computer uses %s. Quitting that program fixes it; on Android, the cable route the person can turn on does not need that port.", phone, at) + setup
+	case TrafficRouteListenFailed:
+		return fmt.Sprintf("Pinky could not listen on this computer's loopback for %s's cable route. A Wi-Fi proxy set to Pinky's is not affected.", phone) + setup
 	case TrafficNoCA:
 		return "Pinky's proxy could not read or make its certificate." + setup
 	case TrafficRouteFailed:

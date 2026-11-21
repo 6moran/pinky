@@ -2200,9 +2200,33 @@
       }
     }
   },
-  "trafficProblemListenFailed": "Another program on this computer uses the proxy's port, so Pinky can't listen.",
+  "trafficProblemListenFailed": "Another program on this computer uses port {port} at {address}, so {phone}'s Wi-Fi proxy can't reach Pinky. Quit that program, and Pinky tries again by itself.",
   "@trafficProblemListenFailed": {
-    "description": "Why Pinky's proxy does not listen: its port is taken."
+    "description": "Why Pinky's proxy does not listen for the phone's Wi-Fi proxy: another program holds the port of the proxy or of its setup link at this computer's address on the phone's network. The cable route (trafficRouteTitle) is not affected. port is the port, address this computer's address, phone the phone's name.",
+    "placeholders": {
+      "port": {
+        "type": "String",
+        "example": "9278"
+      },
+      "address": {
+        "type": "String",
+        "example": "192.168.1.5"
+      },
+      "phone": {
+        "type": "String",
+        "example": "Pixel 9"
+      }
+    }
+  },
+  "trafficProblemRouteListenFailed": "Pinky couldn't listen on this computer's loopback (127.0.0.1), so {phone} isn't routed over its cable. The Wi-Fi proxy isn't affected.",
+  "@trafficProblemRouteListenFailed": {
+    "description": "Why the cable route (trafficRouteTitle) does not start: Pinky could not listen on this computer's loopback address at any port. The Wi-Fi proxy still works. phone is the phone's name.",
+    "placeholders": {
+      "phone": {
+        "type": "String",
+        "example": "Pixel 9"
+      }
+    }
   },
   "trafficProblemNoCA": "Pinky couldn't read or make its certificate.",
   "@trafficProblemNoCA": {
