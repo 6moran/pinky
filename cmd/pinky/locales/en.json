@@ -2146,7 +2146,7 @@
   "@trafficStepsIOS": {
     "description": "The steps on an iPhone to send its traffic through Pinky's proxy (an automatic proxy with the proxy setup link) and trust Pinky's certificate. Use the names iOS gives these settings in the language."
   },
-  "trafficStepsAndroid": "On the phone:\n1. Settings › Network & internet › Internet, tap the gear next to the Wi-Fi network, edit it, set Proxy to Proxy Auto-Config and enter the proxy setup link as the PAC URL. Or turn on Route over the cable during tasks below instead.\n2. In the browser, open the certificate link.\n3. Settings › Security & privacy › More security settings › Install a certificate › CA certificate, and pick the file you downloaded.",
+  "trafficStepsAndroid": "On the phone:\n1. Settings › Network & internet › Internet, tap the gear next to the Wi-Fi network, edit it, set Proxy to Proxy Auto-Config and enter the proxy setup link as the PAC URL. Or turn on Route over the cable during tasks below instead.\n2. In the browser, open the certificate link.\n3. Settings › Security & privacy › More security settings › Encryption & credentials › Install a certificate › CA certificate, and pick the file you downloaded.",
   "@trafficStepsAndroid": {
     "description": "The steps on an Android phone to send its traffic through Pinky's proxy (Proxy Auto-Config with the proxy setup link) and install Pinky's certificate. Menu names differ between makers; use the names stock Android gives them in the language. Route over the cable during tasks is trafficRouteTitle."
   },
