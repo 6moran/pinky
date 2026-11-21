@@ -267,6 +267,24 @@ func TestSetAwayAtUnreachable(t *testing.T) {
 	}
 }
 
+// TestSetAwayAtNoADB: something takes the connection at the address, as a
+// proxy does before its own way to the tailnet fails, but no adb comes up
+// there. The phone is on its cable all along, so this computer does not
+// reach it at that address.
+func TestSetAwayAtNoADB(t *testing.T) {
+	f, _, _, p := newByHandFake(t)
+	f.set(func(f *fakeADB) {
+		f.connectOK[tailSerial] = true
+		f.connectsOff = true
+	})
+	if _, err := p.SetAwayAt(context.Background(), piHW, tailAddr); !errors.Is(err, driver.ErrAddrUnreachable) {
+		t.Fatalf("no adb there: %v", err)
+	}
+	if _, kept := p.net.get(piHW); kept {
+		t.Fatal("kept an address where no adb came up")
+	}
+}
+
 // TestByHandReconnect: the reconnector reaches a phone set up by hand
 // without Tailscale here, once a probe gets through.
 func TestByHandReconnect(t *testing.T) {
