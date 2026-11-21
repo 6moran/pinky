@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- The Android steps for reading network traffic now include Encryption & credentials on the way to installing Pinky's certificate, and the steps to remove it now go to Trusted credentials › User: removing it from User credentials alone can leave the phone still trusting it.
+
 ## 2026.1121.7 (2026-11-21)
 
 - When an Android phone connected by address never comes online, Pinky now says so every time, instead of sometimes showing a bare time-out error on a busy computer.
