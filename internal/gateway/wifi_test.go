@@ -402,11 +402,23 @@ func TestWiFiCablePulledMidRead(t *testing.T) {
 	p := newAirProvider(demo.NewDevice("iphone", "iPhone", driver.IOS))
 	p.openDelay = 100 * time.Millisecond
 	g, _ := newTestGateway(t, func(o *Options) { o.Providers = []driver.Provider{p}; o.DiscoverEvery = time.Hour })
+	// SetWiFi lists the phones again in the background. Let that pass end
+	// before the pull: one that listed the phone on its cable just before
+	// it and applied that just after would open it again as on its cable.
+	held, release := p.holdList(t)
 	g.SetWiFi(true)
+	select {
+	case <-held:
+	case <-time.After(5 * time.Second):
+		t.Fatal("SetWiFi listed no phones")
+	}
+	release()
+	g.listMu.Lock()
+	g.listMu.Unlock() // the pass has applied its listing
 	s, _ := connect(t, g, "Check the weather")
 	p.pull("iphone")
 	// usbmuxd lists it on Wi-Fi now; a discovery pass sees that a moment
-	// later (whichever runs first: SetWiFi's or this one).
+	// later.
 	p.set("iphone", "wifi")
 	go func() {
 		time.Sleep(150 * time.Millisecond)
