@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1121.7 (2026-11-21)
 
 - When an Android phone connected by address never comes online, Pinky now says so every time, instead of sometimes showing a bare time-out error on a busy computer.
 
