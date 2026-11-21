@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- An agent that asks Pinky to run a task just as Pinky starts is no longer told that tasks run only while Pinky's window is open. Thanks @pseudoyu.
+
 ## 2026.1121.5 (2026-11-21)
 
 - Typing a tailnet address by hand for an Android phone now says this computer can't reach the phone there when something answers at that address but the phone doesn't, instead of asking you to connect the phone. Thanks @pseudoyu.
