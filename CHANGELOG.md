@@ -4,7 +4,7 @@ What changed for people in each release of Pinky, newest first. A version is the
 
 ## 2026.1121.5 (2026-11-21)
 
-- Typing a tailnet address by hand for an Android phone now says this computer can't reach the phone there when something answers at that address but the phone doesn't, instead of asking you to connect the phone.
+- Typing a tailnet address by hand for an Android phone now says this computer can't reach the phone there when something answers at that address but the phone doesn't, instead of asking you to connect the phone. Thanks @pseudoyu.
 
 ## 2026.1121.4 (2026-11-21)
 
