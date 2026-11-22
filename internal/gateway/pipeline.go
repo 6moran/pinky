@@ -319,9 +319,14 @@ func (g *Gateway) gate(l *lease, approvalID string, action bool) *Result {
 // phone may have been unlocked since, by a script or by hand, and the
 // gateway reads the lock state only every few seconds (pollLocks).
 func (g *Gateway) gateOnce(l *lease, approvalID string, action, fresh bool) *Result {
+	// The wait leaves the call time to act within its budget: a phone
+	// moving to another connection for the task may take a minute
+	// (switchWait).
+	wctx, cancel := context.WithTimeout(l.ctx, max(g.opt.CallBudget-switchReserve, g.opt.CallBudget/2))
+	defer cancel()
 	g.mu.Lock()
 	d := l.dev
-	for !l.ended && g.waitMovingLocked(l.ctx, d) {
+	for !l.ended && g.waitMovingLocked(wctx, d) {
 		// It was moving between its cable and Wi-Fi, or Pinky was opening
 		// it again (wifi.go).
 	}
@@ -334,6 +339,10 @@ func (g *Gateway) gateOnce(l *lease, approvalID string, action, fresh bool) *Res
 		return statusResult(StatusStopped, "The lease ended (%s). End the task, or call phone_connect again.", l.endedBy)
 	case waitingLocked(d):
 		res := setupResultLocked(d, fmt.Sprintf("%s is connected but waits for a step before Pinky can use it. Nothing was done.", d.name()))
+		g.mu.Unlock()
+		return res
+	case !d.online && d.switching != "":
+		res := errResult(ErrDeviceOffline, "%s", stillMovingMessage(d.name(), d.switching))
 		g.mu.Unlock()
 		return res
 	case !d.online:
