@@ -2,6 +2,11 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Files whose names start or end with a space now copy to and from Android phones as they are, instead of stopping the copy or replacing another file. Thanks @pseudoyu.
+- Typing a tailnet address for an Android phone that doesn't answer there now says the address can't be reached, instead of sometimes showing a timeout from Pinky's own adb connection.
+
 ## 2026.1122.5 (2026-11-22)
 
 - With the Assistant open on an Android phone, Pinky no longer tells the agent that an app with a blank name came to the front, and no longer refuses its next action for it. Thanks @pseudoyu.

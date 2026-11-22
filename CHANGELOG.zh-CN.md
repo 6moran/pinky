@@ -2,6 +2,11 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
+## Unreleased
+
+- 名字开头或结尾带空格的文件现在能原样在电脑和 Android 手机之间拷贝，不会再让拷贝中途停下，也不会覆盖掉另一个文件。感谢 @pseudoyu。
+- 给 Android 手机手动输入的 tailnet 地址连不上时，现在会说明这个地址无法连接，不会再偶尔显示 Pinky 自己的 adb 连接超时。
+
 ## 2026.1122.5 (2026-11-22)
 
 - 在 Android 手机上打开语音助手时，Pinky 不会再告诉 agent 有个名字为空的应用到了前台，也不会因此拒绝它的下一步操作。感谢 @pseudoyu。
