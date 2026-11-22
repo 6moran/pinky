@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1123.1 (2026-11-23)
 
 - With a free Apple ID, Pinky on the iPhone now waits for LocalDevVPN in its setup: it links to it in the App Store, shows the Tunnel IP and Device IP to enter, and tells you when LocalDevVPN is off or set to the wrong address. Thanks @pepper for reporting it.
 - After Install Pinky on the iPhone installs the lighter app for a free Apple ID, Pinky shows how to set up LocalDevVPN on the phone.
