@@ -2,6 +2,10 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- Opening a background display on an Android phone reached over a slow network, such as Tailscale, no longer times out: Pinky now copies its screen helper to the phone once instead of every time. Thanks @garryforreg for reporting it.
+
 ## 2026.1121.10 (2026-11-21)
 
 - Typing a tailnet address for an Android phone now works when the phone reaches the tailnet through a VPN app that runs Tailscale itself, such as sing-box, instead of saying the address isn't on the phone's VPN. Thanks @crown3 for reporting it.
