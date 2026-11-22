@@ -132,6 +132,13 @@ type Result struct {
 	Log        string       // phone_logs: the log lines or crash reports, as text
 	Switches   []SwitchView // phone_device
 	About      *PhoneAbout  // phone_device's read: the phone's model, system, battery and storage
+
+	// outOfTime: the call's budget ran out before the screen could be
+	// read (outOfTimeBeforeAction, outOfTimeAfterAction).
+	outOfTime bool
+	// unread: the action went out and its screen was left unread, as
+	// Call.unread asks.
+	unread bool
 }
 
 // IsError reports whether the result is an error rather than a status.
@@ -160,6 +167,12 @@ type Call struct {
 	// noAsk refuses an action the rules would ask the person about,
 	// instead of asking: phone_read_list never opens an approval.
 	noAsk bool
+	// unread sends the action without waiting for the screen to settle
+	// or reading it afterwards: the settle stays owed, and the caller
+	// reads the screen in a later call. phone_read_list's last swipe on a
+	// phone whose reads take so long that the call has no time left for
+	// the read after it; its continuation reads that screen first.
+	unread bool
 }
 
 // reuseAge is how old the previous step's read may be for the next batch
@@ -286,6 +299,9 @@ type ScanView struct {
 	Continuation string
 	// gap says why a read stopped at a gap (gapNote), for the message.
 	gap string
+	// notes are further sentences for the message: where the read
+	// scrolled when no list was found, or how slow the phone's reads were.
+	notes []string
 }
 
 // Limits from DESIGN.md's tool table.

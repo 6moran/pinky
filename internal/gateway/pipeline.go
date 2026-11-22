@@ -476,7 +476,7 @@ func (g *Gateway) act(ctx context.Context, l *lease, c Call, a Action) *Result {
 		if ctx.Err() != nil {
 			return errResult(ErrInternal, "The call was cancelled. Nothing was done.")
 		}
-		return errResult(ErrInternal, "Another action on the phone was still running when the call's %s ran out. Nothing was done. Observe, then try again.", human(g.opt.CallBudget))
+		return busyOutOfTime(g.opt.CallBudget)
 	}
 	// Check again under the device's action lock: another call may have
 	// opened an approval, or the person may have taken over, meanwhile.
@@ -1896,6 +1896,17 @@ func (g *Gateway) executeOn(ctx context.Context, l *lease, c Call, a Action, p *
 	var inputNote string
 	if n, ok := dev.(driver.InputNoter); ok && (a.Tool == "type" || a.Tool == "key") {
 		inputNote = n.TakeInputNote()
+	}
+	if c.unread {
+		// The settle owed since the input went out stays owed: the call
+		// that reads the screen next waits it out first (settleOwed).
+		g.mu.Lock()
+		d.inputAt = time.Now()
+		g.mu.Unlock()
+		res := &Result{Status: StatusUncertain, unread: true,
+			Message: "The swipe was sent; phone_read_list reads the screen it led to when it continues."}
+		g.recordStep(l, step, a, c, p, res, start, before, "", "")
+		return res
 	}
 	limit := g.opt.SettleMax
 	if !p.settleFull {
