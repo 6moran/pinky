@@ -2,6 +2,12 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
+## Unreleased
+
+- On an iPhone connected through Pinky on the iPhone, a screen whose elements take the phone too long to give (such as a long list in some apps) no longer makes every call fail: Pinky reads its text from a picture instead, and reads that app faster for the next few minutes.
+- Taps and swipes on such a screen now say they reached the phone instead of ending as uncertain.
+- Opening an app that needs Pinky on the iPhone no longer makes the agent's call time out while the phone moves there.
+
 ## 2026.1122.8 (2026-11-22)
 
 - Agents can now read a list on web pages that show no list, such as a bank's statement page on iPhone: Pinky scrolls the page's content and says which part it read.
