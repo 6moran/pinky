@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +122,11 @@ func TestPhoneFilesPullReplacesLinks(t *testing.T) {
 // the phone's "notes.txt " does not land on "notes.txt", and a local
 // " plan.md" goes to the phone instead of stopping the push.
 func TestPhoneFilesNamesWithSpaces(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows drops spaces at the end of a name, so "notes.txt " is
+		// "notes.txt" there whatever Pinky does.
+		t.Skip("Windows has no names that end with a space")
+	}
 	ctx := context.Background()
 	x := newExtraDev("pixel", "Pixel 9")
 	then := time.Date(2026, 11, 1, 9, 30, 0, 0, time.Local)
