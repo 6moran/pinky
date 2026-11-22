@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1122.2 (2026-11-22)
 
 - `pinky <command> -h`, `--help` and `help` now print the usage and exit with status 0 instead of 2 (1 for `pinky helper`), so scripts no longer take asking for help as a failure. `pinky task` with a missing or wrong subcommand still exits with 2. Thanks @6moran.
 
