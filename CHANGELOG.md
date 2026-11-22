@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1122.7 (2026-11-22)
 
 - When an agent's task waits for an iPhone the Mac lost on Wi-Fi, Pinky now shows it in Needs you with Restart device service and sends a notification, so someone nearby can bring the phone back.
 - Agents are told that only someone at the computer can bring back an iPhone the Mac lost on Wi-Fi, so a scheduled run nobody watches stops or uses another phone instead of waiting 15 minutes.
