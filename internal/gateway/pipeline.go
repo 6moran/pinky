@@ -1621,9 +1621,18 @@ func (g *Gateway) pendingResult(l *lease, info approval.Info) *Result {
 	if info.Kind == approval.KindHandoff {
 		what = "hand control back"
 	}
-	return &Result{Status: StatusPending, ApprovalID: info.ID, Rule: info.Rule,
-		Message: fmt.Sprintf("Still waiting for the person to %s (%s). Nothing was done yet. Repeat the same call with approval_id %q; the person has %s left.",
-			what, info.Title, info.ID, approval.Human(left))}
+	msg := fmt.Sprintf("Still waiting for the person to %s (%s). Nothing was done yet. Repeat the same call with approval_id %q; the person has %s left.",
+		what, info.Title, info.ID, approval.Human(left))
+	g.mu.Lock()
+	lost := info.Kind == approval.KindHandoff && waitingLocked(l.dev) && l.dev.info.Setup == driver.SetupDeviceService
+	g.mu.Unlock()
+	if lost {
+		// Only a person at the computer can bring the phone back; an agent
+		// nobody watches would wait out the whole handoff.
+		msg += " The phone still waits for the computer's device service to be restarted, which needs a person at the computer and its administrator password. " +
+			"If nobody is at the computer, as in a scheduled or unattended run, stop waiting: release the phone with phone_release and use another one, or end the task."
+	}
+	return &Result{Status: StatusPending, ApprovalID: info.ID, Rule: info.Rule, Message: msg}
 }
 
 func (g *Gateway) withdrawnResult(l *lease, out approval.Outcome) *Result {

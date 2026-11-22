@@ -755,6 +755,8 @@ func setupResultLocked(d *device, first string) *Result {
 		msg += " Pinky will not use it until the person trusts it on its page in Pinky or plugs the phone in: tell them, and end the task."
 	case driver.SetupMediaInUse:
 		msg += " The person may be on a call: ask them with phone_handoff to end it or close that app when they can, saying why; the handoff ends by itself once the phone is ready."
+	case driver.SetupDeviceService:
+		msg += " " + deviceServiceHelp
 	default:
 		msg += " Ask the person to do it with phone_handoff, saying what to do; the handoff ends by itself once the phone is ready."
 	}
@@ -765,6 +767,16 @@ func setupResultLocked(d *device, first string) *Result {
 	}
 	return res
 }
+
+// deviceServiceHelp is what an agent can do about a phone the computer's
+// device service lost (driver.SetupDeviceService): only a person at the
+// computer can bring it back, with an administrator's password, so an agent
+// nobody watches must not wait for it.
+const deviceServiceHelp = "Only a person at this computer can fix it: they click Restart device service on the phone's page in Pinky " +
+	"and enter the computer's administrator password, which Pinky cannot do for them (Pinky shows them a card in Needs you and a notification). " +
+	"If nobody is at the computer, as in a scheduled or unattended run, do not wait for it: release it with phone_release and use another phone, " +
+	"or end the task saying the phone needs the device service restarted. " +
+	"Otherwise ask them with phone_handoff; it ends by itself once the phone is back."
 
 // connectStep is the history step of phone_connect. own says the task
 // left the background display the person chose for the phone's own
