@@ -229,11 +229,14 @@ func (d *WDADevice) runTree(ctx context.Context, c *treeCall) {
 	close(c.done)
 }
 
-// treeBy is when a read with ctx stops waiting for the tree.
+// treeBy is when a read with ctx stops waiting for the tree: after
+// wdaTreeWait, and wdaOCRReserve before ctx ends, or half way there when
+// ctx has less than twice that left.
 func treeBy(ctx context.Context, now time.Time) time.Time {
 	by := now.Add(wdaTreeWait)
 	if dl, ok := ctx.Deadline(); ok {
-		if end := dl.Add(-wdaOCRReserve); end.Before(by) {
+		reserve := min(wdaOCRReserve, dl.Sub(now)/2)
+		if end := dl.Add(-reserve); end.Before(by) {
 			by = end
 		}
 	}

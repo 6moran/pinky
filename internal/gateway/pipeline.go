@@ -1943,6 +1943,10 @@ func (g *Gateway) executeOn(ctx context.Context, l *lease, c Call, a Action, p *
 	g.mu.Unlock()
 	res := g.screenResult(l, next, false)
 	res.Status = StatusSettled
+	if next.TreeTooSlow {
+		// Not uncertain: the phone took the input, only its tree is slow.
+		res.Message = strings.TrimSpace("The action was delivered to the phone; the screen after it is read without its elements. " + res.Message)
+	}
 	if unread {
 		// GitHub issue #30: not an empty settled screen, but what it is.
 		res.Status = StatusUncertain
@@ -2576,9 +2580,20 @@ func (g *Gateway) screenResult(l *lease, raw *screen.Screen, full bool) *Result 
 		res.Message = unsettledMessage
 	} else if raw.AppHidden {
 		res.Message = appHiddenMessage
+	} else if raw.TreeTooSlow {
+		res.Message = treeTooSlowMessage
 	}
 	return res
 }
+
+// treeTooSlowMessage goes with a read whose element tree the phone did not
+// give in time (screen.Screen.TreeTooSlow): Pinky on the iPhone on a
+// screen whose tree takes it tens of seconds, such as a long list.
+const treeTooSlowMessage = "Pinky on the iPhone did not give this screen's elements in time (some screens, such as long lists " +
+	"in some apps, take it tens of seconds), so this read has no refs: only the app, the lock state and any text OCR read " +
+	"from a picture of the screen. Tap by x and y, ask for a screenshot (phone_observe screenshot: true) to see the screen, " +
+	"or use phone_key (back, home) to leave the page; keys work as usual. For the next few minutes, reads of this app " +
+	"ask the phone for fewer of its elements, or none, so that they come sooner."
 
 // appHiddenMessage goes with a read where the phone gave Pinky's
 // accessibility service no window of the app in front, so that the

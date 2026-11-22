@@ -265,3 +265,27 @@ func TestWDABackWithoutTree(t *testing.T) {
 		t.Fatalf("actions %v", acts)
 	}
 }
+
+// A read waits for the tree wdaTreeWait at most, and leaves wdaOCRReserve
+// of its context for the picture, or half of what is left when that is
+// short.
+func TestTreeBy(t *testing.T) {
+	now := time.Now()
+	in := func(left time.Duration) time.Duration {
+		ctx, cancel := context.WithDeadline(context.Background(), now.Add(left))
+		defer cancel()
+		return treeBy(ctx, now).Sub(now)
+	}
+	if got := treeBy(context.Background(), now).Sub(now); got != wdaTreeWait {
+		t.Errorf("no deadline: %v", got)
+	}
+	if got := in(time.Minute); got != wdaTreeWait {
+		t.Errorf("a minute left: %v", got)
+	}
+	if got := in(12 * time.Second); got != 12*time.Second-wdaOCRReserve {
+		t.Errorf("12 s left: %v", got)
+	}
+	if got := in(4 * time.Second); got != 2*time.Second {
+		t.Errorf("4 s left: %v", got)
+	}
+}
