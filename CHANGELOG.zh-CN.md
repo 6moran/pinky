@@ -2,7 +2,7 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## Unreleased
+## 2026.1122.3 (2026-11-22)
 
 - 有些手机不把某些应用的界面交给无障碍服务（例如 ColorOS 17 上的微信），Pinky 现在能认出这类前台应用，用 OCR 读出它的文字，并告诉 agent 为什么只有文字。截图和其他应用一样，按这个应用的规则处理。感谢 @ECxiaozong 反馈。
 
