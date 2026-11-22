@@ -2,7 +2,7 @@
 
 What changed for people in each release of Pinky, newest first. A version is the release's date in Asia/Shanghai and that day's count: 2026.1107.2 is the second release of 7 November 2026. Notes wait under "Unreleased" until the next release takes them; see [docs/RELEASING.md](docs/RELEASING.md).
 
-## Unreleased
+## 2026.1122.9 (2026-11-22)
 
 - On an iPhone connected through Pinky on the iPhone, a screen whose elements take the phone too long to give (such as a long list in some apps) no longer makes every call fail: Pinky reads its text from a picture instead, and reads that app faster for the next few minutes.
 - Taps and swipes on such a screen now say they reached the phone instead of ending as uncertain.

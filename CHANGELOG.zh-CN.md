@@ -2,7 +2,7 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## Unreleased
+## 2026.1122.9 (2026-11-22)
 
 - 通过「iPhone 上的 Pinky」连接 iPhone 时，如果某个屏幕的元素手机迟迟给不出来（比如某些 App 里很长的列表），调用不会再一个接一个地失败：Pinky 会改为从截图读出文字，并在接下来几分钟里更快地读这个 App。
 - 在这样的屏幕上点按和滑动，现在会说明操作已经送到手机，不再以 uncertain 结束。
