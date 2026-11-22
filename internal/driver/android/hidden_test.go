@@ -335,6 +335,42 @@ func TestHiddenAppBackground(t *testing.T) {
 	}
 }
 
+// TestHiddenAppNotUnderFocusedOverlay: the Assistant's overlay (on an
+// emulator with Android 15, after a long press of the power key) is a
+// focused window over the whole screen that Android gives accessibility
+// services with no application type, and it hides the launcher's window.
+// The person is looking at the overlay, which the tree has: no app is
+// hidden there, and the window manager is not asked.
+func TestHiddenAppNotUnderFocusedOverlay(t *testing.T) {
+	stubOCR(t, &ocrStub{supported: driver.ErrUnsupported})
+	ts := newTreeServer(t)
+	tr := &companion.Tree{Display: companion.Display{Width: scrW, Height: scrH, DensityDPI: 440}}
+	tr.Windows = append(tr.Windows, companion.Window{ID: 9, Type: "unknown", Package: "com.google.android.googlequicksearchbox",
+		Focused: true, Active: true, Bounds: companion.Bounds{0, 0, scrW, scrH},
+		Root: node("android.widget.FrameLayout", 0, 0, scrW, scrH, text("Hi, how can I help?", 40, 1900, 1040, 2000))})
+	ts.set(0, tr)
+	p := &hiddenPhone{focused: "  Display: mDisplayId=0\n    mFocusedApp=ActivityRecord{c47f4c1 u0 com.android.launcher/.Launcher t1}\n"}
+	d := hiddenDevice(t, p, ts)
+
+	s, err := d.Observe(context.Background(), driver.ObserveOptions{OCR: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AppHidden || s.App.ID != "" || strings.Contains(s.Header(), "hidden from accessibility") {
+		t.Errorf("screen under the Assistant's overlay = %+v", s)
+	}
+	if n := p.askedFocus(); n != 0 {
+		t.Errorf("asked the window manager %d times with a focused overlay in the tree", n)
+	}
+	found := false
+	for _, e := range s.Elements {
+		found = found || e.Label == "Hi, how can I help?"
+	}
+	if !found {
+		t.Errorf("elements = %+v, want the overlay's text", s.Elements)
+	}
+}
+
 // TestHiddenAppWithKeyboard: a hidden app with the keyboard up and no
 // elements is not an incomplete tree to fall back from: the companion stays
 // on.
