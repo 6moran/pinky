@@ -2,7 +2,7 @@
 
 Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版本号是发布当天的日期（Asia/Shanghai 时区）加上当天的序号：2026.1107.2 是 2026 年 11 月 7 日的第二个版本。还没发布的说明先放在“Unreleased”下面，由下一个版本带走。英文版见 [CHANGELOG.md](CHANGELOG.md)；发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## Unreleased
+## 2026.1122.1 (2026-11-22)
 
 - 通过 Tailscale 等慢速网络连接的 Android 手机，打开后台显示不再超时：Pinky 现在只向手机复制一次屏幕组件，不再每次都复制。感谢 @garryforreg 反馈。
 
