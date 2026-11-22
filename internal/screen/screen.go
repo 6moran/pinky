@@ -225,6 +225,12 @@ type Screen struct {
 	// the tree has none of its elements. Elements hold other windows'
 	// nodes and what OCR read from a picture, if anything.
 	AppHidden bool
+	// TreeTooSlow: the phone did not give the element tree in time (an
+	// iPhone through WebDriverAgent on a screen whose tree takes it tens
+	// of seconds, such as a long React Native list), so Elements hold only
+	// what OCR read from a picture, if anything; the app and lock state
+	// are still known when the phone said them.
+	TreeTooSlow bool
 }
 
 // Find returns the element with the given ref.
@@ -276,6 +282,9 @@ func (s *Screen) Header() string {
 	}
 	if s.AppHidden {
 		parts = append(parts, "app hidden from accessibility: OCR text only")
+	}
+	if s.TreeTooSlow {
+		parts = append(parts, "element tree too slow: OCR text only")
 	}
 	if f, ok := s.Focused(); ok && f.Ref != 0 {
 		parts = append(parts, fmt.Sprintf("focus [%d]", f.Ref))
