@@ -4,7 +4,7 @@ What changed for people in each release of Pinky, newest first. A version is the
 
 ## 2026.1123.1 (2026-11-23)
 
-- With a free Apple ID, Pinky on the iPhone now waits for LocalDevVPN in its setup: it links to it in the App Store, shows the Tunnel IP and Device IP to enter, and tells you when LocalDevVPN is off or set to the wrong address. Thanks @pepper for reporting it.
+- With a free Apple ID, Pinky on the iPhone now waits for LocalDevVPN in its setup: it links to it in the App Store, shows the Tunnel IP and Device IP to enter, and tells you when LocalDevVPN is off or set to the wrong address. Thanks pepper on Discord for reporting it.
 - After Install Pinky on the iPhone installs the lighter app for a free Apple ID, Pinky shows how to set up LocalDevVPN on the phone.
 
 ## 2026.1122.9 (2026-11-22)

@@ -4,7 +4,7 @@ Pinky 每个版本给用户带来了哪些变化，最新的在最前面。版�
 
 ## 2026.1123.1 (2026-11-23)
 
-- 使用免费 Apple ID 时，iPhone 上的 Pinky 会在设置步骤里等 LocalDevVPN 连上：给出 App Store 链接，列出要填的 Tunnel IP 和 Device IP，LocalDevVPN 没打开或地址填错时也会提醒你。感谢 @pepper 反馈。
+- 使用免费 Apple ID 时，iPhone 上的 Pinky 会在设置步骤里等 LocalDevVPN 连上：给出 App Store 链接，列出要填的 Tunnel IP 和 Device IP，LocalDevVPN 没打开或地址填错时也会提醒你。感谢 Discord 上的 pepper 反馈。
 - 「安装 iPhone 上的 Pinky」装好免费 Apple ID 用的精简版后，Pinky 会告诉你怎么在手机上设置 LocalDevVPN。
 
 ## 2026.1122.9 (2026-11-22)
